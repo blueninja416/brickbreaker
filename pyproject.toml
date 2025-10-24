@@ -1,0 +1,35 @@
+[dependency-groups]
+lint = ["mypy>=1.18.2", "ruff>=0.14.2"]
+
+[build-system]
+requires = ["uv_build>=0.9.5,<0.10.0"]
+build-backend = "uv_build"
+
+[project]
+name = "brickbreaker"
+version = "0.1.0"
+description = "A simple brick breaker game implemented in Python for CMSC 495."
+readme = "README.md"
+authors = [
+    { name = "blueninja", email = "blueninja416@gmail.com" },
+    # Enter names here
+]
+requires-python = ">=3.10"
+dependencies = ["pyinstaller>=6.0.0"]
+
+[project.scripts]
+brickbreaker = "brickbreaker.__main__:_main"
+
+[tool.mypy]
+strict = true
+packages = ["brickbreaker"]
+
+[tool.ruff]
+line-length = 80
+
+[tool.ruff.lint]
+ignore = ["COM812"] # This rule conflicts with the formatter.
+select = ["ALL"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"

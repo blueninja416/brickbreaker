@@ -1,0 +1,10 @@
+# Cache Folders
+__pycache__/
+.mypy_cache/
+.ruff_cache/
+
+# Distribution Files
+dist/
+
+# Virtual Environments
+.venv/
