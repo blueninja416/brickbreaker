@@ -15,7 +15,10 @@ authors = [
     # Enter names here
 ]
 requires-python = ">=3.10"
-dependencies = ["pyinstaller>=6.0.0"]
+dependencies = [
+    "pygame>=2.6.1",
+    "pyinstaller>=6.0.0",
+]
 
 [project.scripts]
 brickbreaker = "brickbreaker.__main__:_main"

@@ -1,10 +1,10 @@
 """Run the Brick Breaker game."""
 
-import sys
+from brickbreaker import Game
 
 
 def _main() -> None:
-    sys.stdout.write("Hello from brickbreaker!\n")
+    Game().run()
 
 
 if __name__ == "__main__":
