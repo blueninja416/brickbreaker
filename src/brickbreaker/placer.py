@@ -5,18 +5,25 @@ import sys
 from dataclasses import dataclass, field
 
 import pygame
+import queue  # non-blocking reads from net.incoming
 
 pygame.init()
 
 # Configure
-WID, HEI = 900, 600
+WID, HEI = 1120, 600
 FPS = 60
 BG = (18, 18, 22)
 WHITE: pygame.Color = (255, 255, 255)
 OUTLINE = (160, 160, 160)
 SIDEBAR_W = 220
 ZONE_H = 400
+
 GRID = 10
+
+# Must match breaker.py
+PADDLE_W = 120   # set to your breaker’s value
+PADDLE_H = 16    # set to your breaker’s value
+BALL_RADIUS = 8  # set to your breaker’s value
 
 # Brick queue
 W_MIN, W_MAX = 40, 180
@@ -24,7 +31,7 @@ H_MIN, H_MAX = 16, 60
 QUEUE_SIZE = 6
 
 # Timers
-BUILD_SECONDS = 15
+BUILD_SECONDS = 45
 COOLDOWN_MS = 1000
 
 # Window popup
@@ -66,6 +73,18 @@ class State:
     timer_start: int = 0
     time_left: int = BUILD_SECONDS
     time_up: bool = False
+    # NEW: round status flags (used to freeze UI and show banners)
+    game_over: bool = False
+    player_won: bool = False  # True when placer wins (time), False when breaker wins
+    # Mirrored render state from the breaker (host)
+    paddle: pygame.Rect = field(
+        default_factory=lambda: pygame.Rect((WID - PADDLE_W) // 2, HEI - 40, PADDLE_W, PADDLE_H)
+    )
+    ball_pos: pygame.Vector2 = field(
+        default_factory=lambda: pygame.Vector2((WID - PADDLE_W) // 2 + PADDLE_W // 2,
+                                               HEI - 40 - BALL_RADIUS - 1)
+    )
+    launched: bool = False
 
 
 S = State()
@@ -81,6 +100,64 @@ def draw_brick(surf, rect, color=WHITE, outline=OUTLINE):
     pygame.draw.rect(surf, outline, rect, 1)
 
 
+# --- Network helpers for sync ---
+def _deserialize_bricks(items: list[dict]) -> list[tuple[pygame.Rect, tuple]]:
+    """Convert [{'x','y','w','h'}, ...] to [(Rect, WHITE), ...] to match S.bricks format."""
+    return [(pygame.Rect(it["x"], it["y"], it["w"], it["h"]), WHITE) for it in items]
+
+def pump_incoming_client_for_sync(net):
+    """Client (placer) applies full map and timer sent by host breaker."""
+    if not net or getattr(net, "is_host", False):
+        return
+    while True:
+        try:
+            msg = net.incoming.get_nowait()
+        except queue.Empty:
+            break
+
+        t = msg.get("type")
+        if t == "sync_bricks":
+            S.bricks = _deserialize_bricks(msg["bricks"])
+
+        elif t == "game_over":
+            winner = msg.get("winner")
+            reason = msg.get("reason")
+            # Mirror the host's end state and freeze
+            if winner == "breaker" and reason == "goal":
+                S.player_won = False
+                S.game_over = True
+                S.time_up = False
+            elif winner == "placer" and reason == "time":
+                S.player_won = True
+                S.game_over = True
+                S.time_up = True
+            S.timer_running = False
+
+        elif t == "brick_remove":
+            idx = int(msg["index"])
+            if 0 <= idx < len(S.bricks):
+                S.bricks.pop(idx)
+
+        elif t == "timer_state":
+            # Mirror the host's timer
+            S.time_left = int(msg.get("time_left", S.time_left))
+            # Optional: mark as running if there's remaining time
+            # S.timer_running = S.time_left > 0
+
+        elif t == "render_state":
+            # Mirror the host's paddle & ball positions
+            px = int(msg.get("paddle_x", S.paddle.x))
+            S.paddle.x = px
+            # keep the paddle on-screen within the field area
+            S.paddle.clamp_ip(FIELD_RECT)
+
+            S.ball_pos.update(
+                float(msg.get("ball_x", S.ball_pos.x)),
+                float(msg.get("ball_y", S.ball_pos.y)),
+            )
+            S.launched = bool(msg.get("launched", S.launched))
+
+
 # Gameplay logic
 def fill_queue(state: State):
     while len(state.queue) < QUEUE_SIZE:
@@ -93,8 +170,8 @@ def can_place(state: State) -> bool:
     return (now_ms() - state.last_place_time) >= COOLDOWN_MS
 
 
-def place_from_queue(state: State, mouse_pos):
-    if state.time_up or not state.queue or not can_place(state):
+def place_from_queue(state: State, mouse_pos, net=None):
+    if state.game_over or state.time_up or not state.queue or not can_place(state):
         return
 
     z = zone_rect()
@@ -112,6 +189,11 @@ def place_from_queue(state: State, mouse_pos):
             return
 
     state.bricks.append((r, color))
+
+    # NEW: tell the host breaker about this new brick
+    if net and not getattr(net, "is_host", False):
+        net.send({"type": "brick_add", "x": r.x, "y": r.y, "w": r.w, "h": r.h})
+
     state.queue.pop(0)
     fill_queue(state)
     state.last_place_time = now_ms()
@@ -147,8 +229,13 @@ def draw_field(state: State, mouse_pos):
     for rect, color in state.bricks:
         draw_brick(screen, rect, color)
 
+    # Draw mirrored paddle and ball from host
+    pygame.draw.rect(screen, WHITE, state.paddle)
+    pygame.draw.rect(screen, OUTLINE, state.paddle, 1)
+    pygame.draw.circle(screen, WHITE, (int(state.ball_pos.x), int(state.ball_pos.y)), BALL_RADIUS)
+
     # Block placement preview
-    if state.queue and not state.time_up:
+    if state.queue and not state.time_up and not state.game_over:
         w, h, _ = state.queue[0]
         ghost = pygame.Rect(snap(mouse_pos[0] - w // 2), snap(mouse_pos[1] - h // 2), w, h)
         clamp_inside(ghost, z)
@@ -167,7 +254,7 @@ def draw_sidebar(state: State):
     y += 40
 
     # cooldown status
-    if not state.time_up:
+    if not state.time_up and not state.game_over:
         if can_place(state):
             ui_text(screen, "Ready to place", FONT_S, (SIDEBAR.left + 16, y))
             y += 30
@@ -194,13 +281,29 @@ def draw_sidebar(state: State):
 
 
 def draw_game_complete(state: State):
-    if state.time_up:
-        msg = FONT_L.render("Game Complete", True, WHITE)
+    if state.game_over:
+        if state.player_won:
+            text = "Placer Wins (Time)!"
+        else:
+            text = "Breaker Wins (Goal)!"
+        msg = FONT_L.render(text, True, WHITE)
         screen.blit(msg, msg.get_rect(center=(FIELD_RECT.centerx, HEI - 60)))
 
 
 # Main
-def main():
+def main(net=None):
+    # Role-aware title
+    if net and not getattr(net, "is_host", False):
+        pygame.display.set_caption("Placer (Client)")
+    elif net and getattr(net, "is_host", False):
+        pygame.display.set_caption("Placer (Host)")
+    else:
+        pygame.display.set_caption("Placer (Local)")
+
+    # Ask the host breaker for the current full map (covers late joins)
+    if net and not getattr(net, "is_host", False):
+        net.send({"type": "sync_request"})
+
     fill_queue(S)
     while True:
         dt = clock.tick(FPS) / 1000
@@ -215,9 +318,11 @@ def main():
                 and e.button == 1
                 and zone_rect().collidepoint(mouse_pos)
             ):
-                place_from_queue(S, mouse_pos)
+                place_from_queue(S, mouse_pos, net)
 
-        update_timer(S)
+        pump_incoming_client_for_sync(net)
+        if not (S.game_over or S.player_won):
+            update_timer(S)
 
         screen.fill(BG)
         draw_field(S, mouse_pos)

@@ -6,8 +6,17 @@ import pygame
 class Game:
     """Main Brick Breaker game class."""
 
-    def run(self) -> None:
+    def run(self, net=None, args=None) -> None:
         """Run the game."""
+        if args and args.role == "placer":
+            from . import placer
+            placer.main(net)
+            return
+        elif args and args.role == "breaker":
+            from . import breaker
+            breaker.main(net)
+            return
+
         pygame.init()
         pygame.display.set_caption("Brick Breaker")
         screen = pygame.display.set_mode((800, 600))

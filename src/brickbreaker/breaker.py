@@ -4,6 +4,7 @@ import sys
 from dataclasses import dataclass, field
 
 import pygame
+import queue  # non-blocking reads from net.incoming
 
 pygame.init()
 
@@ -21,6 +22,10 @@ BALL_RADIUS = 8
 BALL_SPEED = 420
 
 COUNTDOWN_SECONDS = 45
+
+_last_timer_send_ms = 0
+_last_game_over_sent = False
+_last_state_send_ms = 0
 
 # Window setup
 screen = pygame.display.set_mode((WID, HEI))
@@ -88,6 +93,8 @@ def make_demo_bricks():
 # Initial setup (no reset later)
 S.bricks = make_demo_bricks()
 
+def _serialize_bricks(rects: list[pygame.Rect]) -> list[dict]:
+    return [{"x": r.x, "y": r.y, "w": r.w, "h": r.h} for r in rects]
 
 # Launch ball
 def launch_ball():
@@ -191,6 +198,8 @@ def collide_bricks():
 
     if hit is not None:
         S.bricks.pop(hit)
+        return hit
+    return None
 
 
 # Draw
@@ -220,9 +229,57 @@ def draw():
 
     pygame.display.flip()
 
+def _pump_incoming_host(net):
+    """Host (breaker) replies to sync_request and applies brick_add from client."""
+    if not net or not getattr(net, "is_host", False):
+        return
+    while True:
+        try:
+            msg = net.incoming.get_nowait()
+        except queue.Empty:
+            break
+
+        t = msg.get("type")
+
+        if t == "sync_request":
+            # 1) full map
+            net.send({"type": "sync_bricks", "bricks": _serialize_bricks(S.bricks)})
+            # 2) immediate render snapshot (so the client sees paddle/ball instantly)
+            net.send({
+                "type": "render_state",
+                "paddle_x": int(S.paddle.x),
+                "ball_x": float(S.ball_pos.x),
+                "ball_y": float(S.ball_pos.y),
+                "launched": bool(S.launched),
+            })
+
+        elif t == "brick_add":
+            if S.game_over or S.player_won:
+                continue  # ignore adds after round ends
+            r = pygame.Rect(msg["x"], msg["y"], msg["w"], msg["h"])
+            S.bricks.append(r)
+            if not S.timer_running:
+                S.timer_running = True
+                S.time_start_ms = now_ms()
+
+            # NEW: if timer hasn't started yet, start it now
+            if not S.timer_running and not (S.game_over or S.player_won):
+                S.timer_running = True
+                S.time_start_ms = now_ms()
 
 # Main
-def main():
+def main(net=None):
+    global _last_timer_send_ms, _last_game_over_sent, _last_state_send_ms
+    # Title by role
+    if net and getattr(net, "is_host", False):
+        pygame.display.set_caption("Breaker (Host)")
+    else:
+        pygame.display.set_caption("Breaker (Local)")
+
+    # Host proactively sends full map once (client may already be connected)
+    if net and getattr(net, "is_host", False):
+        net.send({"type": "sync_bricks", "bricks": _serialize_bricks(S.bricks)})
+
     while True:
         dt = clock.tick(FPS) / 1000.0
 
@@ -230,15 +287,50 @@ def main():
             if e.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
-            if e.type == pygame.KEYDOWN and e.key == pygame.K_SPACE:
-                launch_ball()
+            if not (S.game_over or S.player_won):  # freeze input after game over
+                if e.type == pygame.KEYDOWN and e.key == pygame.K_SPACE:
+                    launch_ball()
 
-        move_paddle(dt)
-        update_ball(dt)
-        collide_paddle()
-        collide_bricks()
+        _pump_incoming_host(net)
+
+        if not (S.game_over or S.player_won):      # freeze simulation after game over
+            move_paddle(dt)
+            update_ball(dt)
+            collide_paddle()
+            removed = collide_bricks()
+            if net and getattr(net, "is_host", False) and removed is not None:
+                net.send({"type": "brick_remove", "index": removed})
+
+        # Send paddle/ball render state to placer ~30 Hz
+        if net and getattr(net, "is_host", False):
+            now = now_ms()
+            if now - _last_state_send_ms > 33:  # ~30 Hz
+                _last_state_send_ms = now
+                net.send({
+                    "type": "render_state",
+                    "paddle_x": int(S.paddle.x),
+                    "ball_x": float(S.ball_pos.x),
+                    "ball_y": float(S.ball_pos.y),
+                    "launched": bool(S.launched),
+                })
+
         update_timer()
-        draw()
+
+        # End-of-round sync (host -> client) exactly once
+        if net and getattr(net, "is_host", False) and not _last_game_over_sent:
+            if S.player_won:
+                net.send({"type": "game_over", "winner": "breaker", "reason": "goal"})
+                _last_game_over_sent = True
+            elif S.game_over:  # timer expired => placer wins
+                net.send({"type": "game_over", "winner": "placer", "reason": "time"})
+                _last_game_over_sent = True
+
+        # keep timers in sync
+        if net and getattr(net, "is_host", False):
+            now = now_ms()
+            if now - _last_timer_send_ms > 1000:
+                _last_timer_send_ms = now
+                net.send({"type": "timer_state", "time_left": int(S.time_left)})
 
 
 if __name__ == "__main__":
