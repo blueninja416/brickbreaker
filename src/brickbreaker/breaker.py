@@ -229,7 +229,7 @@ def draw():
 
     pygame.display.flip()
 
-def _pump_incoming_host(net):
+def _pump_incoming_host_for_sync(net):
     """Host (breaker) replies to sync_request and applies brick_add from client."""
     if not net or not getattr(net, "is_host", False):
         return
@@ -291,7 +291,7 @@ def main(net=None):
                 if e.type == pygame.KEYDOWN and e.key == pygame.K_SPACE:
                     launch_ball()
 
-        _pump_incoming_host(net)
+        _pump_incoming_host_for_sync(net)
 
         if not (S.game_over or S.player_won):      # freeze simulation after game over
             move_paddle(dt)
@@ -325,12 +325,19 @@ def main(net=None):
                 net.send({"type": "game_over", "winner": "placer", "reason": "time"})
                 _last_game_over_sent = True
 
-        # keep timers in sync
+        # NEW: host broadcasts timer to client ~1 Hz
         if net and getattr(net, "is_host", False):
             now = now_ms()
-            if now - _last_timer_send_ms > 1000:
-                _last_timer_send_ms = now
-                net.send({"type": "timer_state", "time_left": int(S.time_left)})
+            if S.timer_running and not (S.game_over or S.player_won):
+                if now - _last_timer_send_ms > 1000:
+                    _last_timer_send_ms = now
+                    net.send({"type": "timer_state", "time_left": int(S.time_left)})
+            else:
+                # Optional: send one last update when stopping
+                if now - _last_timer_send_ms > 1000:
+                    _last_timer_send_ms = now
+                    net.send({"type": "timer_state", "time_left": int(S.time_left)})
+        draw()
 
 
 if __name__ == "__main__":

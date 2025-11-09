@@ -1,14 +1,6 @@
 # net/protocol.py
 import json
 
-MSG_SYNC_REQUEST = "sync_request"
-MSG_SYNC_BRICKS  = "sync_bricks"
-MSG_BRICK_ADD    = "brick_add"
-MSG_BRICK_REMOVE = "brick_remove"
-MSG_TIMER_STATE  = "timer_state"
-MSG_RENDER_STATE = "render_state"
-MSG_GAME_OVER    = "game_over"
-
 def encode(msg: dict) -> bytes:
     return (json.dumps(msg, separators=(",", ":")) + "\n").encode("utf-8")
 
