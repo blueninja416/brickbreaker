@@ -1,11 +1,13 @@
 """Brick Placer logic by Phoebe-Feathers."""
 
+import queue  # non-blocking reads from net.incoming
 import random
 import sys
 from dataclasses import dataclass, field
 
 import pygame
-import queue  # non-blocking reads from net.incoming
+
+from brickbreaker.UI.bricks import Brick, draw_brick
 
 pygame.init()
 
@@ -21,13 +23,13 @@ ZONE_H = 400
 GRID = 10
 
 # Must match breaker.py
-PADDLE_W = 120   # set to your breaker’s value
-PADDLE_H = 16    # set to your breaker’s value
+PADDLE_W = 120  # set to your breaker’s value
+PADDLE_H = 16  # set to your breaker’s value
 BALL_RADIUS = 8  # set to your breaker’s value
 
 # Brick queue
-W_MIN, W_MAX = 40, 180
-H_MIN, H_MAX = 16, 60
+W_MIN, W_MAX = 2, 6
+H_MIN, H_MAX = 1, 2
 QUEUE_SIZE = 6
 
 # Timers
@@ -59,14 +61,14 @@ def zone_rect() -> pygame.Rect:
     return pygame.Rect(FIELD_RECT.left, FIELD_RECT.top, FIELD_RECT.width, ZONE_H)
 
 
-def clamp_inside(r: pygame.Rect, bounds: pygame.Rect) -> None:
-    r.x = max(bounds.left, min(r.x, bounds.right - r.width))
-    r.y = max(bounds.top, min(r.y, bounds.bottom - r.height))
+def clamp_inside(r: Brick, bounds: pygame.Rect) -> None:
+    r.rect().x = max(bounds.left, min(r.rect().x, bounds.right - r.rect().width))
+    r.rect().y = max(bounds.top, min(r.rect().y, bounds.bottom - r.rect().height))
 
 
 @dataclass
 class State:
-    bricks: list[tuple[pygame.Rect, tuple]] = field(default_factory=list)
+    bricks: list[tuple[Brick, tuple]] = field(default_factory=list)
     queue: list[tuple[int, int, tuple]] = field(default_factory=list)
     last_place_time: int = 0
     timer_running: bool = False
@@ -81,8 +83,9 @@ class State:
         default_factory=lambda: pygame.Rect((WID - PADDLE_W) // 2, HEI - 40, PADDLE_W, PADDLE_H)
     )
     ball_pos: pygame.Vector2 = field(
-        default_factory=lambda: pygame.Vector2((WID - PADDLE_W) // 2 + PADDLE_W // 2,
-                                               HEI - 40 - BALL_RADIUS - 1)
+        default_factory=lambda: pygame.Vector2(
+            (WID - PADDLE_W) // 2 + PADDLE_W // 2, HEI - 40 - BALL_RADIUS - 1
+        )
     )
     launched: bool = False
 
@@ -95,15 +98,16 @@ def ui_text(surf, text, font, pos):
     surf.blit(font.render(text, True, WHITE), pos)
 
 
-def draw_brick(surf, rect, color=WHITE, outline=OUTLINE):
-    pygame.draw.rect(surf, color, rect)
-    pygame.draw.rect(surf, outline, rect, 1)
+# def draw_brick(surf, rect, color=WHITE, outline=OUTLINE):
+#     pygame.draw.rect(surf, color, rect)
+#     pygame.draw.rect(surf, outline, rect, 1)
 
 
 # --- Network helpers for sync ---
 def _deserialize_bricks(items: list[dict]) -> list[tuple[pygame.Rect, tuple]]:
     """Convert [{'x','y','w','h'}, ...] to [(Rect, WHITE), ...] to match S.bricks format."""
-    return [(pygame.Rect(it["x"], it["y"], it["w"], it["h"]), WHITE) for it in items]
+    return [(Brick(it["x"], it["y"], it["w"], it["h"], "red"), WHITE) for it in items]
+
 
 def pump_incoming_client_for_sync(net):
     """Client (placer) applies full map and timer sent by host breaker."""
@@ -178,21 +182,21 @@ def place_from_queue(state: State, mouse_pos, net=None):
     w, h, color = state.queue[0]
 
     # Placement logic/zones
-    r = pygame.Rect(snap(mouse_pos[0] - w // 2), snap(mouse_pos[1] - h // 2), w, h)
+    r = Brick(snap(mouse_pos[0] - w // 2), snap(mouse_pos[1] - h // 2), w, h, "red")
     clamp_inside(r, z)
     if not z.contains(r):
         return
 
     # Eliminate possibility of overlap
     for existing, _ in state.bricks:
-        if existing.colliderect(r):
+        if existing.rect().colliderect(r):
             return
 
     state.bricks.append((r, color))
 
     # NEW: tell the host breaker about this new brick
     if net and not getattr(net, "is_host", False):
-        net.send({"type": "brick_add", "x": r.x, "y": r.y, "w": r.w, "h": r.h})
+        net.send({"type": "brick_add", "x": r.x, "y": r.y, "w": r.studs_x, "h": r.studs_y})
 
     state.queue.pop(0)
     fill_queue(state)
@@ -227,7 +231,7 @@ def draw_field(state: State, mouse_pos):
 
     # placed bricks
     for rect, color in state.bricks:
-        draw_brick(screen, rect, color)
+        draw_brick(screen, rect)
 
     # Draw mirrored paddle and ball from host
     pygame.draw.rect(screen, WHITE, state.paddle)
@@ -237,12 +241,12 @@ def draw_field(state: State, mouse_pos):
     # Block placement preview
     if state.queue and not state.time_up and not state.game_over:
         w, h, _ = state.queue[0]
-        ghost = pygame.Rect(snap(mouse_pos[0] - w // 2), snap(mouse_pos[1] - h // 2), w, h)
+        ghost = Brick(snap(mouse_pos[0] - w // 2), snap(mouse_pos[1] - h // 2), w, h, "red")
         clamp_inside(ghost, z)
         if z.contains(ghost):
             s = pygame.Surface((w, h), pygame.SRCALPHA)
             s.fill((*WHITE, 100))
-            screen.blit(s, ghost.topleft)
+            screen.blit(s, ghost.rect().topleft)
             pygame.draw.rect(screen, WHITE, ghost, 1)
 
 
@@ -276,7 +280,7 @@ def draw_sidebar(state: State):
         bw, bh = max(6, int(w * scale)), max(6, int(h * scale))
         bx = box.centerx - bw // 2
         by = box.centery - bh // 2
-        draw_brick(screen, pygame.Rect(bx, by, bw, bh))
+        draw_brick(screen, Brick(bx, by, w, h, "red"))
         y += 60
 
 
