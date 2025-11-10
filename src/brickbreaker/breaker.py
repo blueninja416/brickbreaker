@@ -6,7 +6,9 @@ from dataclasses import dataclass, field
 
 import pygame
 
-from brickbreaker.UI.bricks import Brick, draw_brick  # non-blocking reads from net.incoming
+from brickbreaker.UI.ball import Ball, draw_ball_stud
+from brickbreaker.UI.bricks import Brick, draw_brick
+from brickbreaker.UI.paddle import Paddle  # non-blocking reads from net.incoming
 
 pygame.init()
 
@@ -17,7 +19,7 @@ BG = (18, 18, 22)
 WHITE = (255, 255, 255)
 OUTLINE = (140, 140, 140)
 
-PADDLE_W, PADDLE_H = 120, 16
+PADDLE_W, PADDLE_H = 10, 1
 PADDLE_SPEED = 480
 
 BALL_RADIUS = 8
@@ -47,8 +49,8 @@ def now_ms():
 # Game state
 @dataclass
 class State:
-    paddle: pygame.Rect = field(
-        default_factory=lambda: pygame.Rect((WID - PADDLE_W) // 2, HEI - 40, PADDLE_W, PADDLE_H)
+    paddle: Paddle = field(
+        default_factory=lambda: Paddle((WID - PADDLE_W) // 2, HEI - 40, PADDLE_W)
     )
     ball_pos: pygame.Vector2 = field(
         default_factory=lambda: pygame.Vector2(
@@ -134,10 +136,10 @@ def move_paddle(dt):
         keys[pygame.K_LEFT] or keys[pygame.K_a]
     )
     S.paddle.x += int(dx * PADDLE_SPEED * dt)
-    S.paddle.clamp_ip(pygame.Rect(0, 0, WID, HEI))
+    S.paddle.rect().clamp_ip(pygame.Rect(0, 0, WID, HEI))
 
     if not S.launched:
-        S.ball_pos.update(S.paddle.centerx, S.paddle.top - BALL_RADIUS - 1)
+        S.ball_pos.update(S.paddle.rect().centerx, S.paddle.rect().top - BALL_RADIUS - 1)
 
 
 # Ball movement
@@ -160,7 +162,7 @@ def update_ball(dt):
     if S.ball_pos.y >= HEI - BALL_RADIUS:
         S.launched = False
         S.ball_vel.update(0, 0)
-        S.ball_pos.update(S.paddle.centerx, S.paddle.top - BALL_RADIUS - 1)
+        S.ball_pos.update(S.paddle.rect().centerx, S.paddle.rect().top - BALL_RADIUS - 1)
 
 
 # Paddle collision
@@ -172,8 +174,8 @@ def collide_paddle():
         S.ball_pos.x - BALL_RADIUS, S.ball_pos.y - BALL_RADIUS, BALL_RADIUS * 2, BALL_RADIUS * 2
     )
 
-    if ball_rect.colliderect(S.paddle) and S.ball_vel.y > 0:
-        offset = (ball_rect.centerx - S.paddle.centerx) / (S.paddle.width / 2)
+    if ball_rect.colliderect(S.paddle.rect()) and S.ball_vel.y > 0:
+        offset = (ball_rect.centerx - S.paddle.rect().centerx) / (S.paddle.rect().width / 2)
         S.ball_vel.y *= -1
         S.ball_vel.x = (BALL_SPEED * 0.9) * offset
         S.ball_vel.scale_to_length(BALL_SPEED)
@@ -217,8 +219,8 @@ def draw():
     for brick in S.bricks:
         draw_brick(screen, brick)
 
-    pygame.draw.rect(screen, WHITE, S.paddle)
-    pygame.draw.circle(screen, WHITE, (int(S.ball_pos.x), int(S.ball_pos.y)), BALL_RADIUS)
+    S.paddle.draw(screen)
+    draw_ball_stud(screen, Ball(int(S.ball_pos.x), int(S.ball_pos.y)))
 
     ui_top = "Arrow keys or A/D to move   |   Space to launch"
     screen.blit(FONT_S.render(ui_top, True, WHITE), (12, 10))

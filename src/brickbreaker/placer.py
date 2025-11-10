@@ -7,7 +7,9 @@ from dataclasses import dataclass, field
 
 import pygame
 
+from brickbreaker.UI.ball import Ball, draw_ball_stud
 from brickbreaker.UI.bricks import Brick, draw_brick
+from brickbreaker.UI.paddle import Paddle
 
 pygame.init()
 
@@ -23,8 +25,8 @@ ZONE_H = 400
 GRID = 10
 
 # Must match breaker.py
-PADDLE_W = 120  # set to your breaker’s value
-PADDLE_H = 16  # set to your breaker’s value
+PADDLE_W = 10  # set to your breaker’s value
+PADDLE_H = 1  # set to your breaker’s value
 BALL_RADIUS = 8  # set to your breaker’s value
 
 # Brick queue
@@ -79,8 +81,8 @@ class State:
     game_over: bool = False
     player_won: bool = False  # True when placer wins (time), False when breaker wins
     # Mirrored render state from the breaker (host)
-    paddle: pygame.Rect = field(
-        default_factory=lambda: pygame.Rect((WID - PADDLE_W) // 2, HEI - 40, PADDLE_W, PADDLE_H)
+    paddle: Paddle = field(
+        default_factory=lambda: Paddle((WID - PADDLE_W) // 2, HEI - 40, PADDLE_W)
     )
     ball_pos: pygame.Vector2 = field(
         default_factory=lambda: pygame.Vector2(
@@ -153,7 +155,7 @@ def pump_incoming_client_for_sync(net):
             px = int(msg.get("paddle_x", S.paddle.x))
             S.paddle.x = px
             # keep the paddle on-screen within the field area
-            S.paddle.clamp_ip(FIELD_RECT)
+            S.paddle.rect().clamp_ip(FIELD_RECT)
 
             S.ball_pos.update(
                 float(msg.get("ball_x", S.ball_pos.x)),
@@ -234,9 +236,8 @@ def draw_field(state: State, mouse_pos):
         draw_brick(screen, rect)
 
     # Draw mirrored paddle and ball from host
-    pygame.draw.rect(screen, WHITE, state.paddle)
-    pygame.draw.rect(screen, OUTLINE, state.paddle, 1)
-    pygame.draw.circle(screen, WHITE, (int(state.ball_pos.x), int(state.ball_pos.y)), BALL_RADIUS)
+    S.paddle.draw(screen)
+    draw_ball_stud(screen, Ball(int(state.ball_pos.x), int(state.ball_pos.y)), BALL_RADIUS)
 
     # Block placement preview
     if state.queue and not state.time_up and not state.game_over:
