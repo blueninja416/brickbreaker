@@ -1,10 +1,14 @@
 """Brick Breaker logic by Phoebe-Feathers."""
 
+import queue
 import sys
 from dataclasses import dataclass, field
 
 import pygame
-import queue  # non-blocking reads from net.incoming
+
+from brickbreaker.UI.ball import Ball, draw_ball_stud
+from brickbreaker.UI.bricks import Brick, draw_brick
+from brickbreaker.UI.paddle import Paddle  # non-blocking reads from net.incoming
 
 pygame.init()
 
@@ -15,7 +19,7 @@ BG = (18, 18, 22)
 WHITE = (255, 255, 255)
 OUTLINE = (140, 140, 140)
 
-PADDLE_W, PADDLE_H = 120, 16
+PADDLE_W, PADDLE_H = 10, 1
 PADDLE_SPEED = 480
 
 BALL_RADIUS = 8
@@ -45,8 +49,8 @@ def now_ms():
 # Game state
 @dataclass
 class State:
-    paddle: pygame.Rect = field(
-        default_factory=lambda: pygame.Rect((WID - PADDLE_W) // 2, HEI - 40, PADDLE_W, PADDLE_H)
+    paddle: Paddle = field(
+        default_factory=lambda: Paddle((WID - PADDLE_W) // 2, HEI - 40, PADDLE_W)
     )
     ball_pos: pygame.Vector2 = field(
         default_factory=lambda: pygame.Vector2(
@@ -56,7 +60,7 @@ class State:
     ball_vel: pygame.Vector2 = field(default_factory=lambda: pygame.Vector2(0, 0))
     launched: bool = False
 
-    bricks: list[pygame.Rect] = field(default_factory=list)
+    bricks: list[Brick] = field(default_factory=list)
 
     timer_running: bool = False
     time_start_ms: int = 0
@@ -71,7 +75,7 @@ S = State()
 
 # Brick layout (temporary demo bricks)
 def make_demo_bricks():
-    bricks = []
+    bricks: list[Brick] = []
     cols, rows = 10, 6
     gap = 4
     left_margin = 20
@@ -85,7 +89,8 @@ def make_demo_bricks():
             y = top + r * cell_h + gap // 2
             w = cell_w - gap
             h = cell_h - gap
-            bricks.append(pygame.Rect(x, y, w, h))
+            # bricks.append(pygame.Rect(x, y, w, h))
+            bricks.append(Brick(x, y, 4, 1, "red"))
 
     return bricks
 
@@ -93,8 +98,13 @@ def make_demo_bricks():
 # Initial setup (no reset later)
 S.bricks = make_demo_bricks()
 
-def _serialize_bricks(rects: list[pygame.Rect]) -> list[dict]:
-    return [{"x": r.x, "y": r.y, "w": r.w, "h": r.h} for r in rects]
+
+def _serialize_bricks(bricks: list[Brick]) -> list[dict]:
+    return [
+        {"x": brick.rect().x, "y": brick.rect().y, "w": brick.studs_x, "h": brick.studs_y}
+        for brick in bricks
+    ]
+
 
 # Launch ball
 def launch_ball():
@@ -126,10 +136,10 @@ def move_paddle(dt):
         keys[pygame.K_LEFT] or keys[pygame.K_a]
     )
     S.paddle.x += int(dx * PADDLE_SPEED * dt)
-    S.paddle.clamp_ip(pygame.Rect(0, 0, WID, HEI))
+    S.paddle.rect().clamp_ip(pygame.Rect(0, 0, WID, HEI))
 
     if not S.launched:
-        S.ball_pos.update(S.paddle.centerx, S.paddle.top - BALL_RADIUS - 1)
+        S.ball_pos.update(S.paddle.rect().centerx, S.paddle.rect().top - BALL_RADIUS - 1)
 
 
 # Ball movement
@@ -152,7 +162,7 @@ def update_ball(dt):
     if S.ball_pos.y >= HEI - BALL_RADIUS:
         S.launched = False
         S.ball_vel.update(0, 0)
-        S.ball_pos.update(S.paddle.centerx, S.paddle.top - BALL_RADIUS - 1)
+        S.ball_pos.update(S.paddle.rect().centerx, S.paddle.rect().top - BALL_RADIUS - 1)
 
 
 # Paddle collision
@@ -164,8 +174,8 @@ def collide_paddle():
         S.ball_pos.x - BALL_RADIUS, S.ball_pos.y - BALL_RADIUS, BALL_RADIUS * 2, BALL_RADIUS * 2
     )
 
-    if ball_rect.colliderect(S.paddle) and S.ball_vel.y > 0:
-        offset = (ball_rect.centerx - S.paddle.centerx) / (S.paddle.width / 2)
+    if ball_rect.colliderect(S.paddle.rect()) and S.ball_vel.y > 0:
+        offset = (ball_rect.centerx - S.paddle.rect().centerx) / (S.paddle.rect().width / 2)
         S.ball_vel.y *= -1
         S.ball_vel.x = (BALL_SPEED * 0.9) * offset
         S.ball_vel.scale_to_length(BALL_SPEED)
@@ -174,21 +184,21 @@ def collide_paddle():
 # Brick collision
 def collide_bricks():
     if not S.launched or S.game_over or S.player_won:
-        return
+        return None
 
     ball_rect = pygame.Rect(
         S.ball_pos.x - BALL_RADIUS, S.ball_pos.y - BALL_RADIUS, BALL_RADIUS * 2, BALL_RADIUS * 2
     )
 
     hit = None
-    for i, rect in enumerate(S.bricks):
-        if rect.colliderect(ball_rect):
+    for i, brick in enumerate(S.bricks):
+        if brick.rect().colliderect(ball_rect):
             hit = i
             overlap = [
-                ball_rect.right - rect.left,
-                rect.right - ball_rect.left,
-                ball_rect.bottom - rect.top,
-                rect.bottom - ball_rect.top,
+                ball_rect.right - brick.rect().left,
+                brick.rect().right - ball_rect.left,
+                ball_rect.bottom - brick.rect().top,
+                brick.rect().bottom - ball_rect.top,
             ]
             if min(overlap[:2]) < min(overlap[2:]):
                 S.ball_vel.x *= -1
@@ -206,12 +216,11 @@ def collide_bricks():
 def draw():
     screen.fill(BG)
 
-    for r in S.bricks:
-        pygame.draw.rect(screen, WHITE, r)
-        pygame.draw.rect(screen, OUTLINE, r, 1)
+    for brick in S.bricks:
+        draw_brick(screen, brick)
 
-    pygame.draw.rect(screen, WHITE, S.paddle)
-    pygame.draw.circle(screen, WHITE, (int(S.ball_pos.x), int(S.ball_pos.y)), BALL_RADIUS)
+    S.paddle.draw(screen)
+    draw_ball_stud(screen, Ball(int(S.ball_pos.x), int(S.ball_pos.y)))
 
     ui_top = "Arrow keys or A/D to move   |   Space to launch"
     screen.blit(FONT_S.render(ui_top, True, WHITE), (12, 10))
@@ -229,6 +238,7 @@ def draw():
 
     pygame.display.flip()
 
+
 def _pump_incoming_host_for_sync(net):
     """Host (breaker) replies to sync_request and applies brick_add from client."""
     if not net or not getattr(net, "is_host", False):
@@ -245,18 +255,20 @@ def _pump_incoming_host_for_sync(net):
             # 1) full map
             net.send({"type": "sync_bricks", "bricks": _serialize_bricks(S.bricks)})
             # 2) immediate render snapshot (so the client sees paddle/ball instantly)
-            net.send({
-                "type": "render_state",
-                "paddle_x": int(S.paddle.x),
-                "ball_x": float(S.ball_pos.x),
-                "ball_y": float(S.ball_pos.y),
-                "launched": bool(S.launched),
-            })
+            net.send(
+                {
+                    "type": "render_state",
+                    "paddle_x": int(S.paddle.x),
+                    "ball_x": float(S.ball_pos.x),
+                    "ball_y": float(S.ball_pos.y),
+                    "launched": bool(S.launched),
+                }
+            )
 
         elif t == "brick_add":
             if S.game_over or S.player_won:
                 continue  # ignore adds after round ends
-            r = pygame.Rect(msg["x"], msg["y"], msg["w"], msg["h"])
+            r = Brick(msg["x"], msg["y"], msg["w"], msg["h"], "red")
             S.bricks.append(r)
             if not S.timer_running:
                 S.timer_running = True
@@ -266,6 +278,7 @@ def _pump_incoming_host_for_sync(net):
             if not S.timer_running and not (S.game_over or S.player_won):
                 S.timer_running = True
                 S.time_start_ms = now_ms()
+
 
 # Main
 def main(net=None):
@@ -293,7 +306,7 @@ def main(net=None):
 
         _pump_incoming_host_for_sync(net)
 
-        if not (S.game_over or S.player_won):      # freeze simulation after game over
+        if not (S.game_over or S.player_won):  # freeze simulation after game over
             move_paddle(dt)
             update_ball(dt)
             collide_paddle()
@@ -306,13 +319,15 @@ def main(net=None):
             now = now_ms()
             if now - _last_state_send_ms > 33:  # ~30 Hz
                 _last_state_send_ms = now
-                net.send({
-                    "type": "render_state",
-                    "paddle_x": int(S.paddle.x),
-                    "ball_x": float(S.ball_pos.x),
-                    "ball_y": float(S.ball_pos.y),
-                    "launched": bool(S.launched),
-                })
+                net.send(
+                    {
+                        "type": "render_state",
+                        "paddle_x": int(S.paddle.x),
+                        "ball_x": float(S.ball_pos.x),
+                        "ball_y": float(S.ball_pos.y),
+                        "launched": bool(S.launched),
+                    }
+                )
 
         update_timer()
 
@@ -332,11 +347,10 @@ def main(net=None):
                 if now - _last_timer_send_ms > 1000:
                     _last_timer_send_ms = now
                     net.send({"type": "timer_state", "time_left": int(S.time_left)})
-            else:
-                # Optional: send one last update when stopping
-                if now - _last_timer_send_ms > 1000:
-                    _last_timer_send_ms = now
-                    net.send({"type": "timer_state", "time_left": int(S.time_left)})
+            # Optional: send one last update when stopping
+            elif now - _last_timer_send_ms > 1000:
+                _last_timer_send_ms = now
+                net.send({"type": "timer_state", "time_left": int(S.time_left)})
         draw()
 
 

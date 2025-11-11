@@ -1,12 +1,15 @@
-"""
-Paddle (bottom bouncer bar) — styled like a smooth white LEGO tile.
+"""Paddle (bottom bouncer bar) — styled like a smooth white LEGO tile.
 - Width is expressed in studs for consistent styling with bricks.
 - update() handles input + clamps to the provided bounds.
 - draw() renders a white tile with subtle highlight/shadow.
 """
+
 from dataclasses import dataclass
+
 import pygame as pg
-from config import PADDLE_H, PADDLE_SPEED, STUD_UNIT, COLORS
+
+from .config import COLORS, PADDLE_H, PADDLE_SPEED, STUD_UNIT
+
 
 @dataclass
 class Paddle:
@@ -36,5 +39,5 @@ class Paddle:
     def draw(self, surf: pg.Surface):
         r = self.rect()
         pg.draw.rect(surf, COLORS["paddle"], r, border_radius=2)
-        pg.draw.line(surf, (255, 255, 255), (r.left, r.top), (r.right-1, r.top))
-        pg.draw.line(surf, (200, 200, 200), (r.left, r.bottom-1), (r.right-1, r.bottom-1))
+        pg.draw.line(surf, (255, 255, 255), (r.left, r.top), (r.right - 1, r.top))
+        pg.draw.line(surf, (200, 200, 200), (r.left, r.bottom - 1), (r.right - 1, r.bottom - 1))
