@@ -1,12 +1,15 @@
-"""
-Ball represented as a LEGO stud.
+"""Ball represented as a LEGO stud.
 - Keep velocity normalized to BALL_SPEED for consistent gameplay.
 - Generic helpers (AABB vs circle, reflect) work for both paddle and bricks.
 """
-from dataclasses import dataclass
+
 import math
+from dataclasses import dataclass
+
 import pygame as pg
-from config import BALL_RADIUS, BALL_SPEED
+
+from .config import BALL_RADIUS, BALL_SPEED
+
 
 @dataclass
 class Ball:
@@ -25,12 +28,14 @@ class Ball:
         self.vx *= s
         self.vy *= s
 
+
 def aabb_circle_collision(rect: pg.Rect, cx: float, cy: float, radius: float) -> bool:
     """Circle-vs-AABB overlap test."""
     nx = max(rect.left, min(cx, rect.right))
     ny = max(rect.top, min(cy, rect.bottom))
     dx, dy = cx - nx, cy - ny
-    return dx*dx + dy*dy <= radius*radius
+    return dx * dx + dy * dy <= radius * radius
+
 
 def reflect_off_rect(ball: Ball, rect: pg.Rect):
     """Reflect ball velocity across the closest rect side (simple brick-breaker rule)."""
@@ -45,8 +50,11 @@ def reflect_off_rect(ball: Ball, rect: pg.Rect):
     else:
         ball.vy *= -1
 
+
 def draw_ball_stud(surf: pg.Surface, ball: Ball, color=(235, 235, 235)):
     """Render a stud-like ball with rim and highlight (plastic look)."""
     pg.draw.circle(surf, color, (int(ball.x), int(ball.y)), BALL_RADIUS)
     pg.draw.circle(surf, (180, 180, 180), (int(ball.x), int(ball.y)), BALL_RADIUS, 1)
-    pg.draw.circle(surf, (255, 255, 255), (int(ball.x)-1, int(ball.y)-1), max(1, BALL_RADIUS-2))
+    pg.draw.circle(
+        surf, (255, 255, 255), (int(ball.x) - 1, int(ball.y) - 1), max(1, BALL_RADIUS - 2)
+    )
