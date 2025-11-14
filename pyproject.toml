@@ -12,6 +12,7 @@ description = "A simple brick breaker game implemented in Python for CMSC 495."
 readme = "README.md"
 authors = [
     { name = "blueninja", email = "blueninja416@gmail.com" },
+    { name = "Phoebe-Feathers", email = "procyonparty@gmail.com"},
     # Enter names here
 ]
 requires-python = ">=3.10"
