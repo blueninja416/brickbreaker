@@ -6,7 +6,23 @@ DEFAULT_PORT = 7777
 BUF_SIZE = 65536
 
 class NetNode:
+    """Thin JSON-over-TCP helper used by the breaker/placer game.
+
+    A NetNode wraps a connected TCP socket, spins up a background
+    thread to handle all blocking I/O, and exposes two thread-safe queues:
+
+    * incoming - messages (dicts) received from the peer
+    * outgoing - messages to be sent to the peer
+
+    Messages are encoded/decoded using encode / decode_lines from
+    brickbreaker.net.protocol."""
+
     def __init__(self, sock: socket.socket, is_host: bool):
+        """Create a NetNode around an already-connected socket.
+
+        The is_host flag is used by the game logic to distinguish the
+        authoritative breaker (host) from the placer (client). The background
+        I/O thread is started automatically."""
         self.sock = sock
         self.is_host = is_host
         self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
@@ -18,18 +34,35 @@ class NetNode:
         self._t.start()
 
     @property
-    def incoming(self):  # queue.Queue of dicts from network
+    def incoming(self):
+        """Queue of messages received from the peer.
+
+        Each item is a dict that was sent by the remote side and decoded
+        from JSON by the background I/O thread."""
         return self._in
 
     @property
-    def outgoing(self):  # queue.Queue of dicts to send to network
+    def outgoing(self):
+        """Queue of messages to send to the peer.
+
+        Normally game code should call send() instead of pushing directly
+        onto this queue."""
         return self._out
 
     def send(self, msg: dict):
+        """Schedule a message to be sent to the peer.
+
+        The call returns immediately; the message is enqueued and later written
+        to the socket by the background I/O thread. Messages are silently
+        dropped once the node has been closed."""
         if self._alive:
             self._out.put(msg)
 
     def close(self):
+        """Shut down the TCP connection and stop the background thread.
+
+        After close(), no further messages will be sent or received, and
+        send() becomes a no-op."""
         self._alive = False
         try:
             self.sock.shutdown(socket.SHUT_RDWR)
@@ -43,6 +76,10 @@ class NetNode:
     # ---- host helpers ----
     @staticmethod
     def host(port=DEFAULT_PORT):
+        """Listen for a single incoming connection and return a host node.
+
+        Used by the breaker role to become the authoritative host for a
+        two-player session."""
         ls = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         ls.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         ls.bind(("", port))
@@ -53,12 +90,20 @@ class NetNode:
 
     @staticmethod
     def join(host, port=DEFAULT_PORT):
+        """Connect to an existing host and return a client node."""
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.connect((host, port))
         return NetNode(s, is_host=False)
 
     # ---- background I/O thread ----
     def _pump(self):
+        """Internal worker loop that moves bytes to/from the socket.
+
+        This method runs on a dedicated daemon thread. It:
+
+        * pulls any pending messages from self._out and sends them, and
+        * reads from the socket, decodes complete JSON frames, and pushes them
+          onto self._in."""
         self.sock.settimeout(0.05)
         try:
             while self._alive:
