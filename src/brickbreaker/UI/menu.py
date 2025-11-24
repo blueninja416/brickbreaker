@@ -1,5 +1,4 @@
-"""
-menu.py — LEGO Brick Break (PyGame) main menu
+"""menu.py — LEGO Brick Break (PyGame) main menu
 
 Features
 - Two options: Host a game as Breaker, Join a game as Placer
@@ -15,25 +14,29 @@ Public API
       {"mode":"join", "join_ip":"192.168.1.10", "port": 5000}
     Returns None if the user quits.
 
-Notes
+Notes:
 - This file does not implement networking; it only collects the choice and params.
 - Requires config.py, graphics.py to be present in the same package.
 """
-from __future__ import annotations
-import socket
-import pygame as pg
-from typing import Optional, Tuple
 
-from config import GAME_W, GAME_H, SCALE, FPS, COLORS, STUD_UNIT
-from graphics import lighter, darker, draw_pixel_text
+from __future__ import annotations
+
+import socket
+
+import pygame as pg
+
+from brickbreaker.UI.config import COLORS, FPS, GAME_H, GAME_W, SCALE, STUD_UNIT
+from brickbreaker.UI.graphics import darker, draw_pixel_text, lighter
 
 # ------------------------------ UI Helpers ------------------------------ #
+
 
 class BrickButton:
     """A LEGO-brick styled button with studs along the top edge.
     - Drawn entirely with vector shapes.
     - Call .handle_event(event) to update hover/active, .clicked to check clicks.
     """
+
     def __init__(self, rect: pg.Rect, label: str, color_key: str):
         self.rect = rect
         self.label = label
@@ -46,18 +49,18 @@ class BrickButton:
         studs = max(1, r.width // STUD_UNIT)
         top_y = r.top + 1
         for i in range(studs):
-            cx = r.left + STUD_UNIT//2 + i * STUD_UNIT
+            cx = r.left + STUD_UNIT // 2 + i * STUD_UNIT
             pg.draw.circle(surf, lighter(self.base_color, 10), (cx, top_y), 3)
             pg.draw.circle(surf, darker(self.base_color, 40), (cx, top_y), 3, 1)
-            pg.draw.line(surf, lighter(self.base_color, 15), (cx-3, top_y), (cx+3, top_y))
+            pg.draw.line(surf, lighter(self.base_color, 15), (cx - 3, top_y), (cx + 3, top_y))
 
     def draw(self, surf: pg.Surface):
         r = self.rect
         body = lighter(self.base_color, 20) if self.hover else self.base_color
         # Brick body
         pg.draw.rect(surf, body, r, border_radius=3)
-        pg.draw.line(surf, lighter(body, 25), (r.left, r.top), (r.right-1, r.top))
-        pg.draw.line(surf, darker(body, 35), (r.left, r.bottom-1), (r.right-1, r.bottom-1))
+        pg.draw.line(surf, lighter(body, 25), (r.left, r.top), (r.right - 1, r.top))
+        pg.draw.line(surf, darker(body, 35), (r.left, r.bottom - 1), (r.right - 1, r.bottom - 1))
         self._draw_studs(surf)
         # Label centered
         font = pg.font.SysFont("couriernew", 12, bold=True)
@@ -76,6 +79,7 @@ class BrickButton:
 
 class InputBox:
     """Minimal text input (for IP/port). Set numeric_only=True for port input."""
+
     def __init__(self, rect: pg.Rect, placeholder: str = "", numeric_only: bool = False):
         self.rect = rect
         self.text = ""
@@ -115,6 +119,7 @@ class InputBox:
 
 # ------------------------------ Visual Theme ---------------------------- #
 
+
 def draw_brick_border(surf: pg.Surface):
     """Draw a colorful LEGO brick border around the screen."""
     colors = [COLORS[c] for c in ("red", "yellow", "green", "blue")]
@@ -130,8 +135,8 @@ def draw_brick_border(surf: pg.Surface):
         col = colors[ci % len(colors)]
         for r in (r_top, r_bot):
             pg.draw.rect(surf, col, r)
-            pg.draw.line(surf, lighter(col, 25), (r.left, r.top), (r.right-1, r.top))
-            pg.draw.line(surf, darker(col, 35), (r.left, r.bottom-1), (r.right-1, r.bottom-1))
+            pg.draw.line(surf, lighter(col, 25), (r.left, r.top), (r.right - 1, r.top))
+            pg.draw.line(surf, darker(col, 35), (r.left, r.bottom - 1), (r.right - 1, r.bottom - 1))
             # studs
             cx = r.left + brick_w // 2
             cy = r.top + 1
@@ -148,8 +153,8 @@ def draw_brick_border(surf: pg.Surface):
         col = colors[ci % len(colors)]
         for r in (r_l, r_r):
             pg.draw.rect(surf, col, r)
-            pg.draw.line(surf, lighter(col, 25), (r.left, r.top), (r.right-1, r.top))
-            pg.draw.line(surf, darker(col, 35), (r.left, r.bottom-1), (r.right-1, r.bottom-1))
+            pg.draw.line(surf, lighter(col, 25), (r.left, r.top), (r.right - 1, r.top))
+            pg.draw.line(surf, darker(col, 35), (r.left, r.bottom - 1), (r.right - 1, r.bottom - 1))
             cx = r.left + brick_w // 2
             cy = r.top + 1
             pg.draw.circle(surf, lighter(col, 10), (cx, cy), 3)
@@ -176,19 +181,21 @@ def draw_title_bricks(surf: pg.Surface, text: str, x: int, y: int):
         r = pg.Rect(cx, y, brick_w, brick_h)
         col = colors[ci % len(colors)]
         pg.draw.rect(surf, col, r, border_radius=2)
-        pg.draw.line(surf, lighter(col, 25), (r.left, r.top), (r.right-1, r.top))
-        pg.draw.line(surf, darker(col, 35), (r.left, r.bottom-1), (r.right-1, r.bottom-1))
+        pg.draw.line(surf, lighter(col, 25), (r.left, r.top), (r.right - 1, r.top))
+        pg.draw.line(surf, darker(col, 35), (r.left, r.bottom - 1), (r.right - 1, r.bottom - 1))
         # studs
-        pg.draw.circle(surf, lighter(col, 10), (r.left + brick_w//3, r.top + 2), 2)
-        pg.draw.circle(surf, darker(col, 40), (r.left + brick_w//3, r.top + 2), 2, 1)
-        pg.draw.circle(surf, lighter(col, 10), (r.left + 2*brick_w//3, r.top + 2), 2)
-        pg.draw.circle(surf, darker(col, 40), (r.left + 2*brick_w//3, r.top + 2), 2, 1)
+        pg.draw.circle(surf, lighter(col, 10), (r.left + brick_w // 3, r.top + 2), 2)
+        pg.draw.circle(surf, darker(col, 40), (r.left + brick_w // 3, r.top + 2), 2, 1)
+        pg.draw.circle(surf, lighter(col, 10), (r.left + 2 * brick_w // 3, r.top + 2), 2)
+        pg.draw.circle(surf, darker(col, 40), (r.left + 2 * brick_w // 3, r.top + 2), 2, 1)
         img = font.render(ch, True, (250, 250, 250))
         surf.blit(img, img.get_rect(center=r.center))
         cx += brick_w + gap
         ci += 1
 
+
 # ------------------------------ Networking utils ------------------------ #
+
 
 def get_local_ip() -> str:
     """Best-effort local IP discovery (no external calls)."""
@@ -201,10 +208,13 @@ def get_local_ip() -> str:
     except Exception:
         return "127.0.0.1"
 
+
 # ------------------------------ Menu Logic ------------------------------ #
 
-def run_menu() -> Optional[dict]:
-    pg.init()
+
+def run_menu() -> dict | None:
+    if not pg.get_init():
+        pg.init()
     pg.display.set_caption("LEGO Brick Break — Menu")
     screen = pg.display.set_mode((GAME_W * SCALE, GAME_H * SCALE))
     clock = pg.time.Clock()
@@ -213,14 +223,18 @@ def run_menu() -> Optional[dict]:
     # Buttons
     btn_w = 180
     btn_h = 22
-    host_btn = BrickButton(pg.Rect(GAME_W//2 - btn_w//2, 80, btn_w, btn_h),
-                           "Host game as Breaker", "green")
-    join_btn = BrickButton(pg.Rect(GAME_W//2 - btn_w//2, 110, btn_w, btn_h),
-                           "Join game as Placer", "blue")
+    host_btn = BrickButton(
+        pg.Rect(GAME_W // 2 - btn_w // 2, 80, btn_w, btn_h), "Host game as Breaker", "green"
+    )
+    join_btn = BrickButton(
+        pg.Rect(GAME_W // 2 - btn_w // 2, 110, btn_w, btn_h), "Join game as Placer", "blue"
+    )
 
     # Join inputs
-    ip_box = InputBox(pg.Rect(GAME_W//2 - 90, 140, 120, 18), placeholder="Host IP")
-    port_box = InputBox(pg.Rect(GAME_W//2 + 34, 140, 60, 18), placeholder="Port", numeric_only=True)
+    ip_box = InputBox(pg.Rect(GAME_W // 2 - 90, 140, 120, 18), placeholder="Host IP")
+    port_box = InputBox(
+        pg.Rect(GAME_W // 2 + 34, 140, 60, 18), placeholder="Port", numeric_only=True
+    )
 
     # Host info
     default_port = 5000
@@ -255,7 +269,7 @@ def run_menu() -> Optional[dict]:
                     elif join_btn.clicked:
                         stage = "join"
 
-            elif stage == "join":
+            if stage == "join":
                 ip_box.handle_event(e)
                 port_box.handle_event(e)
                 if e.type == pg.KEYDOWN and e.key == pg.K_RETURN:
@@ -265,7 +279,6 @@ def run_menu() -> Optional[dict]:
                     try:
                         port = int(port_str)
                         if 1 <= port <= 65535 and ip:
-                            pg.quit()
                             return {"mode": "join", "join_ip": ip, "port": port}
                     except ValueError:
                         pass
@@ -275,7 +288,6 @@ def run_menu() -> Optional[dict]:
             elif stage == "host":
                 if e.type == pg.KEYDOWN and e.key == pg.K_RETURN:
                     # Accept displayed IP/port
-                    pg.quit()
                     return {"mode": "host", "host_ip": host_ip, "port": default_port}
                 if e.type == pg.KEYDOWN and e.key == pg.K_ESCAPE:
                     stage = "menu"
@@ -288,24 +300,26 @@ def run_menu() -> Optional[dict]:
         if stage == "menu":
             host_btn.draw(low)
             join_btn.draw(low)
-            draw_pixel_text(low, "Choose an option", GAME_W//2 - 56, 60, COLORS["hud_dim"])
+            draw_pixel_text(low, "Choose an option", GAME_W // 2 - 56, 60, COLORS["hud_dim"])
 
         elif stage == "join":
-            draw_pixel_text(low, "Join as Placer", GAME_W//2 - 52, 60, COLORS["hud"])
-            draw_pixel_text(low, "Enter host IP and port, then press Enter", 20, 72, COLORS["hud_dim"])
+            draw_pixel_text(low, "Join as Placer", GAME_W // 2 - 52, 60, COLORS["hud"])
+            draw_pixel_text(
+                low, "Enter host IP and port, then press Enter", 20, 72, COLORS["hud_dim"]
+            )
             ip_box.draw(low)
             port_box.draw(low)
 
         elif stage == "host":
-            draw_pixel_text(low, "Host as Breaker", GAME_W//2 - 54, 60, COLORS["hud"])
+            draw_pixel_text(low, "Host as Breaker", GAME_W // 2 - 54, 60, COLORS["hud"])
             draw_pixel_text(low, "Share this IP/Port with your opponent", 24, 72, COLORS["hud_dim"])
             draw_pixel_text(low, f"Your IP: {host_ip}", 30, 96, (240, 240, 240))
             draw_pixel_text(low, f"Port: {default_port}", 30, 110, (240, 240, 240))
-            draw_pixel_text(low, "Press Enter to confirm or Esc to go back", 24, 134, COLORS["hud_dim"])
+            draw_pixel_text(
+                low, "Press Enter to confirm or Esc to go back", 24, 134, COLORS["hud_dim"]
+            )
 
         # Upscale to the real window
         up = pg.transform.scale(low, (GAME_W * SCALE, GAME_H * SCALE))
         screen.blit(up, (0, 0))
         pg.display.flip()
-
-

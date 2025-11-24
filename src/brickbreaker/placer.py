@@ -8,10 +8,12 @@ from dataclasses import dataclass, field
 import pygame
 
 # UI integration: use local UI modules rather than package paths
-from ball import Ball, draw_ball_stud
-from bricks import Brick, draw_brick
-from paddle import Paddle
-from end_screens import run_end_screen  # UI-only: show end screen on round end
+from brickbreaker.UI.ball import Ball, draw_ball_stud
+from brickbreaker.UI.bricks import Brick, draw_brick
+from brickbreaker.UI.end_screens import run_end_screen
+from brickbreaker.UI.paddle import Paddle
+
+# from brickbreaker.UI.end_screens import run_end_screen  # UI-only: show end screen on round end
 
 pygame.init()
 
@@ -27,9 +29,9 @@ ZONE_H = 400
 GRID = 10
 
 # Must match breaker.py
-PADDLE_W = 10  # set to your breaker’s value
-PADDLE_H = 1  # set to your breaker’s value
-BALL_RADIUS = 8  # set to your breaker’s value
+PADDLE_W = 10  # set to your breaker's value
+PADDLE_H = 1  # set to your breaker's value
+BALL_RADIUS = 8  # set to your breaker's value
 
 # Brick queue
 W_MIN, W_MAX = 2, 6
@@ -40,10 +42,9 @@ QUEUE_SIZE = 6
 BUILD_SECONDS = 45
 COOLDOWN_MS = 1000
 
-# Window popup
-screen = pygame.display.set_mode((WID, HEI))
-pygame.display.set_caption("Brick Builder Game")
-clock = pygame.time.Clock()
+# Window popup - will be initialized in main()
+screen = None
+clock = None
 
 FIELD_RECT = pygame.Rect(0, 0, WID - SIDEBAR_W, HEI)
 SIDEBAR = pygame.Rect(FIELD_RECT.right, 0, SIDEBAR_W, HEI)
@@ -295,6 +296,14 @@ def draw_game_complete(state: State):
 
 # Main
 def main(net=None):
+    global screen, clock
+    if not pygame.get_init():
+        pygame.init()
+
+    screen = pygame.display.set_mode((WID, HEI))
+    pygame.display.set_caption("Brick Builder Game")
+    clock = pygame.time.Clock()
+
     # Role-aware title
     if net and not getattr(net, "is_host", False):
         pygame.display.set_caption("Placer (Client)")
@@ -337,7 +346,6 @@ def main(net=None):
         if (S.game_over or S.player_won) and not S.end_shown:
             run_end_screen("placer", bool(S.player_won))
             S.end_shown = True
-            pygame.quit()
             return
 
 

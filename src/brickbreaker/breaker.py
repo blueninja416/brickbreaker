@@ -10,7 +10,8 @@ from brickbreaker.UI.ball import Ball, draw_ball_stud
 from brickbreaker.UI.bricks import Brick, draw_brick
 from brickbreaker.UI.paddle import Paddle  # non-blocking reads from net.incoming
 
-pygame.init()
+if not pygame.get_init():
+    pygame.init()
 
 # Configure
 WID, HEI = 900, 600
@@ -287,6 +288,9 @@ def _pump_incoming_host_for_sync(net):
 # Main
 def main(net=None):
     global _last_timer_send_ms, _last_game_over_sent, _last_state_send_ms
+    if not pygame.get_init():
+        pygame.init()
+
     # Title by role
     if net and getattr(net, "is_host", False):
         pygame.display.set_caption("Breaker (Host)")

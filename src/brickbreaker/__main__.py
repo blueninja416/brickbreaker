@@ -1,10 +1,11 @@
 """Run the Brick Breaker game with optional LEGO menu fallback."""
+
 import argparse
 from types import SimpleNamespace
 
-from transport import NetNode, DEFAULT_PORT
-import breaker
-import placer
+from brickbreaker import breaker, placer
+from brickbreaker.net.transport import DEFAULT_PORT, NetNode
+
 
 def _main():
     parser = argparse.ArgumentParser(description="Brick Breaker networking")
@@ -16,7 +17,8 @@ def _main():
 
     # If no role was specified, use the LEGO menu UI to choose
     if not args.role:
-        from menu import run_menu  # UI-only
+        from brickbreaker.UI.menu import run_menu  # UI-only
+
         sel = run_menu()
         if not sel:
             return
@@ -44,6 +46,7 @@ def _main():
         breaker.main(net)
     else:
         placer.main(net)
+
 
 if __name__ == "__main__":
     _main()
