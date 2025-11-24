@@ -7,9 +7,11 @@ from dataclasses import dataclass, field
 
 import pygame
 
-from brickbreaker.UI.ball import Ball, draw_ball_stud
-from brickbreaker.UI.bricks import Brick, draw_brick
-from brickbreaker.UI.paddle import Paddle
+# UI integration: use local UI modules rather than package paths
+from ball import Ball, draw_ball_stud
+from bricks import Brick, draw_brick
+from paddle import Paddle
+from end_screens import run_end_screen  # UI-only: show end screen on round end
 
 pygame.init()
 
@@ -77,7 +79,7 @@ class State:
     timer_start: int = 0
     time_left: int = BUILD_SECONDS
     time_up: bool = False
-    # NEW: round status flags (used to freeze UI and show banners)
+    # Round status flags
     game_over: bool = False
     player_won: bool = False  # True when placer wins (time), False when breaker wins
     # Mirrored render state from the breaker (host)
@@ -91,6 +93,9 @@ class State:
     )
     launched: bool = False
 
+    # UI-only guard so the end screen shows once without affecting logic
+    end_shown: bool = False
+
 
 S = State()
 
@@ -98,11 +103,6 @@ S = State()
 # Helpers
 def ui_text(surf, text, font, pos):
     surf.blit(font.render(text, True, WHITE), pos)
-
-
-# def draw_brick(surf, rect, color=WHITE, outline=OUTLINE):
-#     pygame.draw.rect(surf, color, rect)
-#     pygame.draw.rect(surf, outline, rect, 1)
 
 
 # --- Network helpers for sync ---
@@ -147,8 +147,6 @@ def pump_incoming_client_for_sync(net):
         elif t == "timer_state":
             # Mirror the host's timer
             S.time_left = int(msg.get("time_left", S.time_left))
-            # Optional: mark as running if there's remaining time
-            # S.timer_running = S.time_left > 0
 
         elif t == "render_state":
             # Mirror the host's paddle & ball positions
@@ -196,7 +194,7 @@ def place_from_queue(state: State, mouse_pos, net=None):
 
     state.bricks.append((r, color))
 
-    # NEW: tell the host breaker about this new brick
+    # Tell the host breaker about this new brick (protocol unchanged)
     if net and not getattr(net, "is_host", False):
         net.send({"type": "brick_add", "x": r.x, "y": r.y, "w": r.studs_x, "h": r.studs_y})
 
@@ -334,6 +332,13 @@ def main(net=None):
         draw_sidebar(S)
         draw_game_complete(S)
         pygame.display.flip()
+
+        # UI-only: show end screen once the round is finished (placer perspective)
+        if (S.game_over or S.player_won) and not S.end_shown:
+            run_end_screen("placer", bool(S.player_won))
+            S.end_shown = True
+            pygame.quit()
+            return
 
 
 if __name__ == "__main__":
