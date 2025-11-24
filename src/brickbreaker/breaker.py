@@ -6,9 +6,11 @@ from dataclasses import dataclass, field
 
 import pygame
 
-from brickbreaker.UI.ball import Ball, draw_ball_stud
-from brickbreaker.UI.bricks import Brick, draw_brick
-from brickbreaker.UI.paddle import Paddle  # non-blocking reads from net.incoming
+# UI integration: use local UI modules rather than package paths
+from ball import Ball, draw_ball_stud
+from bricks import Brick, draw_brick
+from paddle import Paddle
+from end_screens import run_end_screen  # UI-only: show end screen on round end
 
 pygame.init()
 
@@ -68,6 +70,9 @@ class State:
 
     game_over: bool = False
     player_won: bool = False
+
+    # UI-only guard so the end screen shows once without affecting logic
+    end_shown: bool = False
 
 
 S = State()
@@ -340,18 +345,26 @@ def main(net=None):
                 net.send({"type": "game_over", "winner": "placer", "reason": "time"})
                 _last_game_over_sent = True
 
-        # NEW: host broadcasts timer to client ~1 Hz
+        # Host broadcasts timer to client ~1 Hz
         if net and getattr(net, "is_host", False):
             now = now_ms()
             if S.timer_running and not (S.game_over or S.player_won):
                 if now - _last_timer_send_ms > 1000:
                     _last_timer_send_ms = now
                     net.send({"type": "timer_state", "time_left": int(S.time_left)})
-            # Optional: send one last update when stopping
             elif now - _last_timer_send_ms > 1000:
                 _last_timer_send_ms = now
                 net.send({"type": "timer_state", "time_left": int(S.time_left)})
+
+        # Draw as usual
         draw()
+
+        # UI-only: show end screen once the round is finished (breaker perspective)
+        if (S.game_over or S.player_won) and not S.end_shown:
+            run_end_screen("breaker", bool(S.player_won))
+            S.end_shown = True
+            pygame.quit()
+            return
 
 
 if __name__ == "__main__":
