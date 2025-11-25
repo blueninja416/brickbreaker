@@ -10,8 +10,8 @@ Features
 Public API
 - run_menu() -> dict | None
     Returns a selection dict, e.g.:
-      {"mode":"host", "host_ip":"192.168.1.10", "port": 5000}
-      {"mode":"join", "join_ip":"192.168.1.10", "port": 5000}
+      {"mode":"host", "host_ip":"192.168.1.10", "port": 7777}
+      {"mode":"join", "join_ip":"192.168.1.10", "port": 7777}
     Returns None if the user quits.
 
 Notes:
@@ -27,6 +27,7 @@ import pygame as pg
 
 from brickbreaker.UI.config import COLORS, FPS, GAME_H, GAME_W, SCALE, STUD_UNIT
 from brickbreaker.UI.graphics import darker, draw_pixel_text, lighter
+from brickbreaker.net.transport import DEFAULT_PORT
 
 # ------------------------------ UI Helpers ------------------------------ #
 
@@ -237,9 +238,9 @@ def run_menu() -> dict | None:
     )
 
     # Host info
-    default_port = 5000
+    default_port = DEFAULT_PORT
     host_ip = get_local_ip()
-    port_value = str(default_port)
+    port_value = str(DEFAULT_PORT)
 
     stage = "menu"  # "menu" | "host" | "join"
 
