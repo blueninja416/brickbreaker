@@ -8,8 +8,9 @@ from dataclasses import dataclass
 
 import pygame as pg
 
-from .config import BRICK_HEIGHT, COLORS, STUD_UNIT
+from .config import BRICK_HEIGHT, COLORS, STUD_UNIT, BRICK_HIT_POINTS
 from .graphics import darker, lighter
+
 
 # Visual tuning for side-view studs
 STUD_RADIUS = 3  # radius of the semicircle studs on the top edge
@@ -25,7 +26,14 @@ class Brick:
     studs_y: int  # depth in studs (kept for data, not used in side height)
     color_key: str
     unbreakable: bool = False
+    hits_left: int = 1
     alive: bool = True
+
+    def __post_init__(self):
+        if not self.unbreakable:
+            self.hits_left = BRICK_HIT_POINTS.get(self.color_key, 1)
+        else:
+            self.hits_left = 999_999
 
     @property
     def w(self) -> int:

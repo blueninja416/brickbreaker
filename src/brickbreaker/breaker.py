@@ -198,28 +198,32 @@ def collide_bricks():
         return None
 
     ball_rect = pygame.Rect(
-        S.ball_pos.x - BALL_RADIUS, S.ball_pos.y - BALL_RADIUS, BALL_RADIUS * 2, BALL_RADIUS * 2
+        S.ball_pos.x - BALL_RADIUS,
+        S.ball_pos.y - BALL_RADIUS,
+        BALL_RADIUS * 2,
+        BALL_RADIUS * 2
     )
-
-    hit = None
     for i, brick in enumerate(S.bricks):
-        if brick.rect().colliderect(ball_rect):
-            hit = i
+        r = brick.rect()
+        if r.colliderect(ball_rect):
             overlap = [
-                ball_rect.right - brick.rect().left,
-                brick.rect().right - ball_rect.left,
-                ball_rect.bottom - brick.rect().top,
-                brick.rect().bottom - ball_rect.top,
+                ball_rect.right - r.left,
+                r.right - ball_rect.left,
+                ball_rect.bottom - r.top,
+                r.bottom - ball_rect.top,
             ]
             if min(overlap[:2]) < min(overlap[2:]):
                 S.ball_vel.x *= -1
             else:
                 S.ball_vel.y *= -1
-            break
-
-    if hit is not None:
-        S.bricks.pop(hit)
-        return hit
+            if not brick.unbreakable:
+                brick.hits_left -= 1
+                if brick.hits_left <= 0:
+                    S.bricks.pop(i)
+                    return i
+                return None
+            else:
+                return None
     return None
 
 
