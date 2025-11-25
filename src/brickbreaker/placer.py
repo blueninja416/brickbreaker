@@ -7,9 +7,13 @@ from dataclasses import dataclass, field
 
 import pygame
 
+# UI integration: use local UI modules rather than package paths
 from brickbreaker.UI.ball import Ball, draw_ball_stud
 from brickbreaker.UI.bricks import Brick, draw_brick
+from brickbreaker.UI.end_screens import run_end_screen
 from brickbreaker.UI.paddle import Paddle
+
+# from brickbreaker.UI.end_screens import run_end_screen  # UI-only: show end screen on round end
 
 pygame.init()
 
@@ -25,9 +29,9 @@ ZONE_H = 400
 GRID = 10
 
 # Must match breaker.py
-PADDLE_W = 10  # set to your breaker’s value
-PADDLE_H = 1  # set to your breaker’s value
-BALL_RADIUS = 8  # set to your breaker’s value
+PADDLE_W = 10  # set to your breaker's value
+PADDLE_H = 1  # set to your breaker's value
+BALL_RADIUS = 8  # set to your breaker's value
 
 # Brick queue
 W_MIN, W_MAX = 2, 6
@@ -38,10 +42,9 @@ QUEUE_SIZE = 6
 BUILD_SECONDS = 45
 COOLDOWN_MS = 1000
 
-# Window popup
-screen = pygame.display.set_mode((WID, HEI))
-pygame.display.set_caption("Brick Builder Game")
-clock = pygame.time.Clock()
+# Window popup - will be initialized in main()
+screen = None
+clock = None
 
 FIELD_RECT = pygame.Rect(0, 0, WID - SIDEBAR_W, HEI)
 SIDEBAR = pygame.Rect(FIELD_RECT.right, 0, SIDEBAR_W, HEI)
@@ -77,7 +80,7 @@ class State:
     timer_start: int = 0
     time_left: int = BUILD_SECONDS
     time_up: bool = False
-    # NEW: round status flags (used to freeze UI and show banners)
+    # Round status flags
     game_over: bool = False
     player_won: bool = False  # True when placer wins (time), False when breaker wins
     # Mirrored render state from the breaker (host)
@@ -91,6 +94,9 @@ class State:
     )
     launched: bool = False
 
+    # UI-only guard so the end screen shows once without affecting logic
+    end_shown: bool = False
+
 
 S = State()
 
@@ -98,11 +104,6 @@ S = State()
 # Helpers
 def ui_text(surf, text, font, pos):
     surf.blit(font.render(text, True, WHITE), pos)
-
-
-# def draw_brick(surf, rect, color=WHITE, outline=OUTLINE):
-#     pygame.draw.rect(surf, color, rect)
-#     pygame.draw.rect(surf, outline, rect, 1)
 
 
 # --- Network helpers for sync ---
@@ -147,8 +148,6 @@ def pump_incoming_client_for_sync(net):
         elif t == "timer_state":
             # Mirror the host's timer
             S.time_left = int(msg.get("time_left", S.time_left))
-            # Optional: mark as running if there's remaining time
-            # S.timer_running = S.time_left > 0
 
         elif t == "render_state":
             # Mirror the host's paddle & ball positions
@@ -196,7 +195,7 @@ def place_from_queue(state: State, mouse_pos, net=None):
 
     state.bricks.append((r, color))
 
-    # NEW: tell the host breaker about this new brick
+    # Tell the host breaker about this new brick (protocol unchanged)
     if net and not getattr(net, "is_host", False):
         net.send({"type": "brick_add", "x": r.x, "y": r.y, "w": r.studs_x, "h": r.studs_y})
 
@@ -297,6 +296,14 @@ def draw_game_complete(state: State):
 
 # Main
 def main(net=None):
+    global screen, clock
+    if not pygame.get_init():
+        pygame.init()
+
+    screen = pygame.display.set_mode((WID, HEI))
+    pygame.display.set_caption("Brick Builder Game")
+    clock = pygame.time.Clock()
+
     # Role-aware title
     if net and not getattr(net, "is_host", False):
         pygame.display.set_caption("Placer (Client)")
@@ -334,6 +341,12 @@ def main(net=None):
         draw_sidebar(S)
         draw_game_complete(S)
         pygame.display.flip()
+
+        # UI-only: show end screen once the round is finished (placer perspective)
+        if (S.game_over or S.player_won) and not S.end_shown:
+            run_end_screen("placer", bool(S.player_won))
+            S.end_shown = True
+            return
 
 
 if __name__ == "__main__":

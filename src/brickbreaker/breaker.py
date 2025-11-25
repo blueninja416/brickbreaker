@@ -10,7 +10,8 @@ from brickbreaker.UI.ball import Ball, draw_ball_stud
 from brickbreaker.UI.bricks import Brick, draw_brick
 from brickbreaker.UI.paddle import Paddle  # non-blocking reads from net.incoming
 
-pygame.init()
+if not pygame.get_init():
+    pygame.init()
 
 # Configure
 WID, HEI = 900, 600
@@ -261,6 +262,10 @@ def _pump_incoming_host_for_sync(net):
 
         t = msg.get("type")
 
+        # Once the round is over, stop replying to network requests.
+        if S.game_over or S.player_won:
+            continue
+
         if t == "sync_request":
             # 1) full map
             net.send({"type": "sync_bricks", "bricks": _serialize_bricks(S.bricks)})
@@ -297,6 +302,9 @@ def _pump_incoming_host_for_sync(net):
 # Main
 def main(net=None):
     global _last_timer_send_ms, _last_game_over_sent, _last_state_send_ms
+    if not pygame.get_init():
+        pygame.init()
+
     # Title by role
     if net and getattr(net, "is_host", False):
         pygame.display.set_caption("Breaker (Host)")
@@ -328,8 +336,8 @@ def main(net=None):
             if net and getattr(net, "is_host", False) and removed is not None:
                 net.send({"type": "brick_remove", "index": removed})
 
-        # Send paddle/ball render state to placer ~30 Hz
-        if net and getattr(net, "is_host", False):
+                # Send paddle/ball render state to placer ~30 Hz
+        if net and getattr(net, "is_host", False) and not (S.game_over or S.player_won):
             now = now_ms()
             if now - _last_state_send_ms > 33:  # ~30 Hz
                 _last_state_send_ms = now
@@ -354,17 +362,15 @@ def main(net=None):
                 net.send({"type": "game_over", "winner": "placer", "reason": "time"})
                 _last_game_over_sent = True
 
-        # NEW: host broadcasts timer to client ~1 Hz
-        if net and getattr(net, "is_host", False):
+        # Host broadcasts timer to client ~1 Hz, but not after game over
+        if net and getattr(net, "is_host", False) and not (S.game_over or S.player_won):
             now = now_ms()
             if S.timer_running and not (S.game_over or S.player_won):
                 if now - _last_timer_send_ms > 1000:
                     _last_timer_send_ms = now
                     net.send({"type": "timer_state", "time_left": int(S.time_left)})
-            # Optional: send one last update when stopping
-            elif now - _last_timer_send_ms > 1000:
-                _last_timer_send_ms = now
-                net.send({"type": "timer_state", "time_left": int(S.time_left)})
+            # Optional “one last update when stopping” logic is now also
+            # suppressed once the game is over by the outer guard.
         draw()
 
 
