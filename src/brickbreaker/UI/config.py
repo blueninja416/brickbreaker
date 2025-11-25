@@ -40,5 +40,13 @@ COLORS = {
     "paddle": (245, 245, 245),  # smooth white tile paddle
 }
 
+BRICK_HIT_POINTS = {
+    "red": 1,
+    "yellow": 2,
+    "green": 3,
+    "blue": 4,
+    "grey": 100,
+}
+
 # Palette for breakable bricks
 BRICK_PALETTE = ["red", "yellow", "green", "blue"]

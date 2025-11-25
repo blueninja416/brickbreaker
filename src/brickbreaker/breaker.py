@@ -70,6 +70,9 @@ class State:
     game_over: bool = False
     player_won: bool = False
 
+    breaker_delay_start_ms: int = 0
+    breaker_delay_active: bool = False
+
 
 S = State()
 
@@ -96,8 +99,8 @@ def make_demo_bricks():
     return bricks
 
 
-# Initial setup (no reset later)
-S.bricks = make_demo_bricks()
+# Initial Setup Removed, only needed for testing, game needs to start with no initial grid.
+# S.bricks = make_demo_bricks()
 
 
 def _serialize_bricks(bricks: list[Brick]) -> list[dict]:
@@ -109,6 +112,13 @@ def _serialize_bricks(bricks: list[Brick]) -> list[dict]:
 
 # Launch ball
 def launch_ball():
+    # Ball launch delay logic
+    if S.breaker_delay_active:
+        elapsed = (now_ms() - S.breaker_delay_start_ms) // 1000
+        if elapsed < 15:
+            return
+        else:
+            S.breaker_delay_active = False
     if S.launched or S.game_over or S.player_won:
         return
     S.launched = True
@@ -188,28 +198,32 @@ def collide_bricks():
         return None
 
     ball_rect = pygame.Rect(
-        S.ball_pos.x - BALL_RADIUS, S.ball_pos.y - BALL_RADIUS, BALL_RADIUS * 2, BALL_RADIUS * 2
+        S.ball_pos.x - BALL_RADIUS,
+        S.ball_pos.y - BALL_RADIUS,
+        BALL_RADIUS * 2,
+        BALL_RADIUS * 2
     )
-
-    hit = None
     for i, brick in enumerate(S.bricks):
-        if brick.rect().colliderect(ball_rect):
-            hit = i
+        r = brick.rect()
+        if r.colliderect(ball_rect):
             overlap = [
-                ball_rect.right - brick.rect().left,
-                brick.rect().right - ball_rect.left,
-                ball_rect.bottom - brick.rect().top,
-                brick.rect().bottom - ball_rect.top,
+                ball_rect.right - r.left,
+                r.right - ball_rect.left,
+                ball_rect.bottom - r.top,
+                r.bottom - ball_rect.top,
             ]
             if min(overlap[:2]) < min(overlap[2:]):
                 S.ball_vel.x *= -1
             else:
                 S.ball_vel.y *= -1
-            break
-
-    if hit is not None:
-        S.bricks.pop(hit)
-        return hit
+            if not brick.unbreakable:
+                brick.hits_left -= 1
+                if brick.hits_left <= 0:
+                    S.bricks.pop(i)
+                    return i
+                return None
+            else:
+                return None
     return None
 
 
@@ -275,6 +289,10 @@ def _pump_incoming_host_for_sync(net):
                 continue  # ignore adds after round ends
             r = Brick(msg["x"], msg["y"], msg["w"], msg["h"], "red")
             S.bricks.append(r)
+            # 15 second delay until ball launch starts when placer places first brick
+            if not S.breaker_delay_active:
+                S.breaker_delay_active = True
+                S.breaker_delay_start_ms = now_ms()
             if not S.timer_running:
                 S.timer_running = True
                 S.time_start_ms = now_ms()
