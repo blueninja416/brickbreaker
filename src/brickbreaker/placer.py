@@ -10,6 +10,7 @@ import pygame
 # UI integration: use local UI modules rather than package paths
 from brickbreaker.UI.ball import Ball, draw_ball_stud
 from brickbreaker.UI.bricks import Brick, draw_brick
+from brickbreaker.UI.config import BRICK_HIT_POINTS, BRICK_PALETTE
 from brickbreaker.UI.end_screens import run_end_screen
 from brickbreaker.UI.paddle import Paddle
 
@@ -168,7 +169,7 @@ def fill_queue(state: State):
     while len(state.queue) < QUEUE_SIZE:
         w = random.randint(W_MIN, W_MAX)
         h = random.randint(H_MIN, H_MAX)
-        state.queue.append((w, h, WHITE))
+        state.queue.append((w, h, random.choice(BRICK_PALETTE)))
 
 
 def can_place(state: State) -> bool:
@@ -183,7 +184,15 @@ def place_from_queue(state: State, mouse_pos, net=None):
     w, h, color = state.queue[0]
 
     # Placement logic/zones
-    r = Brick(snap(mouse_pos[0] - w // 2), snap(mouse_pos[1] - h // 2), w, h, "red")
+    r = Brick(
+        snap(mouse_pos[0] - w // 2),
+        snap(mouse_pos[1] - h // 2),
+        w,
+        h,
+        color,
+        False,
+        BRICK_HIT_POINTS[color],
+    )
     clamp_inside(r, z)
     if not z.contains(r):
         return
@@ -271,7 +280,7 @@ def draw_sidebar(state: State):
     y += 20
 
     # queue preview
-    for w, h, _ in state.queue[:6]:
+    for w, h, color in state.queue[:6]:
         box = pygame.Rect(SIDEBAR.left + 16, y, 160, 42)
         pygame.draw.rect(screen, (26, 26, 32), box, border_radius=6)
         pygame.draw.rect(screen, OUTLINE, box, 1, border_radius=6)
@@ -280,7 +289,7 @@ def draw_sidebar(state: State):
         bw, bh = max(6, int(w * scale)), max(6, int(h * scale))
         bx = box.centerx - bw // 2
         by = box.centery - bh // 2
-        draw_brick(screen, Brick(bx, by, w, h, "red"))
+        draw_brick(screen, Brick(bx, by, w, h, color))
         y += 60
 
 
