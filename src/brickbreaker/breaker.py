@@ -34,7 +34,7 @@ _last_state_send_ms = 0
 
 # Window setup
 screen = pygame.display.set_mode((WID, HEI))
-pygame.display.set_caption("Brick Breaker Game")
+pygame.display.set_caption("Lego Brick Breaker")
 clock = pygame.time.Clock()
 
 FONT_S = pygame.font.SysFont(None, 24)
@@ -77,7 +77,6 @@ class State:
 S = State()
 
 
-# Brick layout (temporary demo bricks)
 def make_demo_bricks():
     bricks: list[Brick] = []
     cols, rows = 10, 6
@@ -105,7 +104,7 @@ def make_demo_bricks():
 
 def _serialize_bricks(bricks: list[Brick]) -> list[dict]:
     return [
-        {"x": brick.rect().x, "y": brick.rect().y, "w": brick.studs_x, "h": brick.studs_y}
+        {"x": brick.rect().x, "y": brick.rect().y, "w": brick.studs_x, "h": brick.studs_y, "color": brick.color_key}
         for brick in bricks
     ]
 
@@ -287,7 +286,10 @@ def _pump_incoming_host_for_sync(net):
         elif t == "brick_add":
             if S.game_over or S.player_won:
                 continue  # ignore adds after round ends
-            r = Brick(msg["x"], msg["y"], msg["w"], msg["h"], "red")
+
+            color = msg.get("color", "red") # PHOEBE: Get brick color
+
+            r = Brick(msg["x"], msg["y"], msg["w"], msg["h"], color) # PHOEBE: removed "red"/change to color
             S.bricks.append(r)
             # 15 second delay until ball launch starts when placer places first brick
             if not S.breaker_delay_active:

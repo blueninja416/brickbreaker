@@ -110,8 +110,12 @@ def ui_text(surf, text, font, pos):
 # --- Network helpers for sync ---
 def _deserialize_bricks(items: list[dict]) -> list[tuple[pygame.Rect, tuple]]:
     """Convert [{'x','y','w','h'}, ...] to [(Rect, WHITE), ...] to match S.bricks format."""
-    return [(Brick(it["x"], it["y"], it["w"], it["h"], "red"), WHITE) for it in items]
-
+    bricks = []
+    for it in items:
+        color = it.get("color", "red")
+        b = Brick(it["x"], it["y"], it["w"], it["h"], color)
+        bricks.append((b, color))
+    return bricks
 
 def pump_incoming_client_for_sync(net):
     """Client (placer) applies full map and timer sent by host breaker."""
@@ -206,7 +210,7 @@ def place_from_queue(state: State, mouse_pos, net=None):
 
     # Tell the host breaker about this new brick (protocol unchanged)
     if net and not getattr(net, "is_host", False):
-        net.send({"type": "brick_add", "x": r.x, "y": r.y, "w": r.studs_x, "h": r.studs_y})
+        net.send({"type": "brick_add", "x": r.x, "y": r.y, "w": r.studs_x, "h": r.studs_y, "color": color})
 
     state.queue.pop(0)
     fill_queue(state)
