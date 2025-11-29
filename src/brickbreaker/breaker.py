@@ -26,11 +26,16 @@ PADDLE_SPEED = 480
 BALL_RADIUS = 8
 BALL_SPEED = 420
 
-COUNTDOWN_SECONDS = 45
+COUNTDOWN_SECONDS = 120
+
+EXPLOSION_RADIUS = 80
+PLACER_BUFF_AMOUNT = 2
 
 _last_timer_send_ms = 0
 _last_game_over_sent = False
 _last_state_send_ms = 0
+
+_explosion_pending_sync = False
 
 # Window setup
 screen = pygame.display.set_mode((WID, HEI))
@@ -107,6 +112,30 @@ def _serialize_bricks(bricks: list[Brick]) -> list[dict]:
         {"x": brick.rect().x, "y": brick.rect().y, "w": brick.studs_x, "h": brick.studs_y, "color": brick.color_key}
         for brick in bricks
     ]
+
+def _apply_placer_buff():
+    for b in S.bricks:
+        if not b.unbreakable:
+            b.hits_left += PLACER_BUFF_AMOUNT
+
+def _apply_explosion(center_brick: Brick):
+    global _explosion_pending_sync
+    cx, cy = center_brick.rect().center
+    survivors: list[Brick] = []
+    for b in S.bricks:
+        if b.unbreakable:
+            survivors.append(b)
+            continue
+
+        dx = b.rect().centerx - cx
+        dy = b.rect().centery - cy
+        if dx * dx + dy * dy <= EXPLOSION_RADIUS * EXPLOSION_RADIUS:
+            b.hits_left -= 2
+            if b.hits_left <= 0:
+                continue
+        survivors.append(b)
+    S.bricks = survivors
+    _explosion_pending_sync = True
 
 
 # Launch ball
@@ -217,6 +246,10 @@ def collide_bricks():
                 S.ball_vel.y *= -1
             if not brick.unbreakable:
                 brick.hits_left -= 1
+                if brick.hits_left <= 0 and brick.color_key == "pink":
+                    center_brick = S.bricks.pop(i)
+                    _apply_explosion(center_brick)
+                    return None
                 if brick.hits_left <= 0:
                     S.bricks.pop(i)
                     return i
@@ -289,6 +322,9 @@ def _pump_incoming_host_for_sync(net):
 
             color = msg.get("color", "red") # PHOEBE: Get brick color
 
+            if color == "purple": # PHOEBE: powerup logic
+                _apply_placer_buff() # PHOEBE: powerup logic
+
             r = Brick(msg["x"], msg["y"], msg["w"], msg["h"], color) # PHOEBE: removed "red"/change to color
             S.bricks.append(r)
             # 15 second delay until ball launch starts when placer places first brick
@@ -307,7 +343,7 @@ def _pump_incoming_host_for_sync(net):
 
 # Main
 def main(net=None):
-    global _last_timer_send_ms, _last_game_over_sent, _last_state_send_ms
+    global _last_timer_send_ms, _last_game_over_sent, _last_state_send_ms, _explosion_pending_sync
     if not pygame.get_init():
         pygame.init()
 
@@ -341,6 +377,10 @@ def main(net=None):
             removed = collide_bricks()
             if net and getattr(net, "is_host", False) and removed is not None:
                 net.send({"type": "brick_remove", "index": removed})
+
+        if net and getattr(net, "is_host", False) and _explosion_pending_sync and not (S.game_over or S.player_won):
+            net.send({"type": "sync_bricks", "bricks": _serialize_bricks(S.bricks)})
+            _explosion_pending_sync = False
 
                 # Send paddle/ball render state to placer ~30 Hz
         if net and getattr(net, "is_host", False) and not (S.game_over or S.player_won):

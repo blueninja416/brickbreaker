@@ -38,6 +38,8 @@ COLORS = {
     "grey": (120, 120, 128),  # unbreakable / obstacle bricks
     "shadow": (0, 0, 0),
     "paddle": (245, 245, 245),  # smooth white tile paddle
+    "pink": (255, 105, 180),
+    "purple": (155, 89, 182),
 }
 
 BRICK_HIT_POINTS = {
@@ -46,6 +48,8 @@ BRICK_HIT_POINTS = {
     "green": 3,
     "blue": 4,
     "grey": 100,
+    "pink": 3,
+    "purple": 1,
 }
 
 # Palette for breakable bricks

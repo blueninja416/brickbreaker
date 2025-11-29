@@ -40,7 +40,7 @@ H_MIN, H_MAX = 1, 2
 QUEUE_SIZE = 6
 
 # Timers
-BUILD_SECONDS = 45
+BUILD_SECONDS = 120
 COOLDOWN_MS = 1000
 
 # Window popup - will be initialized in main()
@@ -173,7 +173,18 @@ def fill_queue(state: State):
     while len(state.queue) < QUEUE_SIZE:
         w = random.randint(W_MIN, W_MAX)
         h = random.randint(H_MIN, H_MAX)
-        state.queue.append((w, h, random.choice(BRICK_PALETTE)))
+
+        base_color = random.choice(BRICK_PALETTE)
+        roll = random.random()
+
+        if roll < 0.06:
+            color = "purple"
+        elif roll < 0.10:
+            color = "pink"
+        else:
+            color = base_color
+
+        state.queue.append((w, h, color))
 
 
 def can_place(state: State) -> bool:
