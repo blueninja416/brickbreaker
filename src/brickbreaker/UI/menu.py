@@ -231,11 +231,8 @@ def run_menu() -> dict | None:
         pg.Rect(GAME_W // 2 - btn_w // 2, 110, btn_w, btn_h), "Join game as Placer", "blue"
     )
 
-    # Join inputs
+    # Join inputs (only IP; port is fixed to DEFAULT_PORT)
     ip_box = InputBox(pg.Rect(GAME_W // 2 - 90, 140, 120, 18), placeholder="Host IP")
-    port_box = InputBox(
-        pg.Rect(GAME_W // 2 + 34, 140, 60, 18), placeholder="Port", numeric_only=True
-    )
 
     # Host info
     default_port = DEFAULT_PORT
@@ -243,6 +240,7 @@ def run_menu() -> dict | None:
     port_value = str(DEFAULT_PORT)
 
     stage = "menu"  # "menu" | "host" | "join"
+    auto_host = False  # when True, auto-confirm host selection after drawing
 
     running = True
     while running:
@@ -267,31 +265,24 @@ def run_menu() -> dict | None:
                 if e.type == pg.MOUSEBUTTONUP and e.button == 1:
                     if host_btn.clicked:
                         stage = "host"
+                        auto_host = True
                     elif join_btn.clicked:
                         stage = "join"
 
             if stage == "join":
                 ip_box.handle_event(e)
-                port_box.handle_event(e)
                 if e.type == pg.KEYDOWN and e.key == pg.K_RETURN:
-                    # Validate
                     ip = ip_box.value()
-                    port_str = port_box.value() or str(default_port)
-                    try:
-                        port = int(port_str)
-                        if 1 <= port <= 65535 and ip:
-                            return {"mode": "join", "join_ip": ip, "port": port}
-                    except ValueError:
-                        pass
+                    if ip:
+                        return {"mode": "join", "join_ip": ip, "port": default_port}
                 if e.type == pg.KEYDOWN and e.key == pg.K_ESCAPE:
                     stage = "menu"
 
             elif stage == "host":
-                if e.type == pg.KEYDOWN and e.key == pg.K_RETURN:
-                    # Accept displayed IP/port
-                    return {"mode": "host", "host_ip": host_ip, "port": default_port}
                 if e.type == pg.KEYDOWN and e.key == pg.K_ESCAPE:
+                    # Cancel hosting and go back to main menu
                     stage = "menu"
+                    auto_host = False
 
         # ------------------- Draw low-res frame ------------------- #
         low.fill(COLORS["bg"])
@@ -306,10 +297,9 @@ def run_menu() -> dict | None:
         elif stage == "join":
             draw_pixel_text(low, "Join as Placer", GAME_W // 2 - 52, 60, COLORS["hud"])
             draw_pixel_text(
-                low, "Enter host IP and port, then press Enter", 20, 72, COLORS["hud_dim"]
+                low, f"Enter host IP, then press Enter. Press ESC to return to main menu.", 8, 72, COLORS["hud_dim"]
             )
             ip_box.draw(low)
-            port_box.draw(low)
 
         elif stage == "host":
             draw_pixel_text(low, "Host as Breaker", GAME_W // 2 - 54, 60, COLORS["hud"])
@@ -317,10 +307,15 @@ def run_menu() -> dict | None:
             draw_pixel_text(low, f"Your IP: {host_ip}", 30, 96, (240, 240, 240))
             draw_pixel_text(low, f"Port: {default_port}", 30, 110, (240, 240, 240))
             draw_pixel_text(
-                low, "Press Enter to confirm or Esc to go back", 24, 134, COLORS["hud_dim"]
+                low, "Waiting for player 2, or press ESC to go back", 24, 134, COLORS["hud_dim"]
             )
 
         # Upscale to the real window
         up = pg.transform.scale(low, (GAME_W * SCALE, GAME_H * SCALE))
         screen.blit(up, (0, 0))
         pg.display.flip()
+
+        # If the user chose "Host" we show the info screen for a frame, then
+        # immediately return to let the main program open the socket.
+        if stage == "host" and auto_host:
+            return {"mode": "host", "host_ip": host_ip, "port": default_port}
