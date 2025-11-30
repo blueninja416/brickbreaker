@@ -27,6 +27,7 @@ BALL_RADIUS = 8
 BALL_SPEED = 420
 
 COUNTDOWN_SECONDS = 120
+BREAKER_DELAY_SECONDS = 15
 
 EXPLOSION_RADIUS = 80
 PLACER_BUFF_AMOUNT = 2
@@ -138,12 +139,11 @@ def _apply_explosion(center_brick: Brick):
     _explosion_pending_sync = True
 
 
-# Launch ball
 def launch_ball():
     # Ball launch delay logic
     if S.breaker_delay_active:
         elapsed = (now_ms() - S.breaker_delay_start_ms) // 1000
-        if elapsed < 15:
+        if elapsed < BREAKER_DELAY_SECONDS:
             return
         else:
             S.breaker_delay_active = False
@@ -167,6 +167,13 @@ def update_timer():
     if S.time_left == 0:
         S.game_over = True
 
+# Breaker delay helper
+def get_breaker_delay_remaining() -> int:
+    """Return remaining breaker delay in whole seconds (0 if none)."""
+    if not S.breaker_delay_active:
+        return 0
+    elapsed = (now_ms() - S.breaker_delay_start_ms) // 1000
+    return max(0, BREAKER_DELAY_SECONDS - elapsed)
 
 # Paddle movement
 def move_paddle(dt):
@@ -274,6 +281,17 @@ def draw():
 
     timer = FONT_M.render(f"Time: {S.time_left:02d}s", True, WHITE)
     screen.blit(timer, (WID - timer.get_width() - 16, 10))
+
+    # Breaker launch delay
+    if not S.launched and not (S.game_over or S.player_won):
+        if S.breaker_delay_active:
+            remaining = BREAKER_DELAY_SECONDS - (now_ms() - S.breaker_delay_start_ms) // 1000
+        else:
+            remaining = BREAKER_DELAY_SECONDS
+        remaining = max(0, remaining)
+
+        delay = FONT_S.render(f"Launch available in: {remaining:2d}s", True, WHITE)
+        screen.blit(delay, (WID - delay.get_width() - 16, 10 + FONT_M.get_height() + 6))
 
     if S.player_won:
         msg = FONT_L.render("You Win!", True, WHITE)
