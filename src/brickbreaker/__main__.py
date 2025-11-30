@@ -19,15 +19,26 @@ def _main():
     if not args.role:
         from brickbreaker.UI.menu import run_menu  # UI-only
 
-        sel = run_menu()
-        if not sel:
-            return
-        if sel["mode"] == "host":
-            net = NetNode.host(port=sel["port"])
-            args = SimpleNamespace(host=True, join=None, port=sel["port"], role="breaker")
-        else:
-            net = NetNode.join(sel["join_ip"], port=sel["port"])
-            args = SimpleNamespace(host=False, join=sel["join_ip"], port=sel["port"], role="placer")
+        error_message = None
+        while True:
+            sel = run_menu(error_message=error_message)
+            error_message = None
+            if not sel:
+                return
+            if sel["mode"] == "host":
+                net = NetNode.host(port=sel["port"])
+                args = SimpleNamespace(host=True, join=None, port=sel["port"], role="breaker")
+                break
+            else:
+                try:
+                    net = NetNode.join(sel["join_ip"], port=sel["port"])
+                    args = SimpleNamespace(host=False, join=sel["join_ip"], port=sel["port"], role="placer")
+                    break
+                except ConnectionRefusedError:
+                    error_message = "Could not connect to host (connection refused)."
+                except OSError:
+                    error_message = "Network error while trying to join host."
+
         if args.role == "breaker":
             breaker.main(net)
         else:

@@ -213,7 +213,7 @@ def get_local_ip() -> str:
 # ------------------------------ Menu Logic ------------------------------ #
 
 
-def run_menu() -> dict | None:
+def run_menu(error_message: str | None = None):
     if not pg.get_init():
         pg.init()
     pg.display.set_caption("LEGO Brick Break — Menu")
@@ -238,6 +238,7 @@ def run_menu() -> dict | None:
     default_port = DEFAULT_PORT
     host_ip = get_local_ip()
     port_value = str(DEFAULT_PORT)
+    join_error = error_message or ""
 
     stage = "menu"  # "menu" | "host" | "join"
     auto_host = False  # when True, auto-confirm host selection after drawing
@@ -283,6 +284,7 @@ def run_menu() -> dict | None:
                     # Cancel hosting and go back to main menu
                     stage = "menu"
                     auto_host = False
+                    join_error = ""
 
         # ------------------- Draw low-res frame ------------------- #
         low.fill(COLORS["bg"])
@@ -293,6 +295,9 @@ def run_menu() -> dict | None:
             host_btn.draw(low)
             join_btn.draw(low)
             draw_pixel_text(low, "Choose an option", GAME_W // 2 - 56, 60, COLORS["hud_dim"])
+            if join_error:
+                # Show the last join error under the buttons on the main menu
+                draw_pixel_text(low, join_error, 32, 150, (255, 64, 64))
 
         elif stage == "join":
             draw_pixel_text(low, "Join as Placer", GAME_W // 2 - 52, 60, COLORS["hud"])
@@ -300,6 +305,8 @@ def run_menu() -> dict | None:
                 low, f"Enter host IP, then press Enter. Press ESC to return to main menu.", 8, 72, COLORS["hud_dim"]
             )
             ip_box.draw(low)
+            #if join_error:
+            #    draw_pixel_text(low, join_error, 32, 150, (255, 64, 64))
 
         elif stage == "host":
             draw_pixel_text(low, "Host as Breaker", GAME_W // 2 - 54, 60, COLORS["hud"])
