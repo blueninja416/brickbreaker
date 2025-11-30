@@ -167,14 +167,6 @@ def update_timer():
     if S.time_left == 0:
         S.game_over = True
 
-# Breaker delay helper
-def get_breaker_delay_remaining() -> int:
-    """Return remaining breaker delay in whole seconds (0 if none)."""
-    if not S.breaker_delay_active:
-        return 0
-    elapsed = (now_ms() - S.breaker_delay_start_ms) // 1000
-    return max(0, BREAKER_DELAY_SECONDS - elapsed)
-
 # Paddle movement
 def move_paddle(dt):
     keys = pygame.key.get_pressed()
