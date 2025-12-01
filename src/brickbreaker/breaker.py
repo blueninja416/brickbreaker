@@ -22,19 +22,27 @@ OUTLINE = (140, 140, 140)
 
 PADDLE_W, PADDLE_H = 10, 1
 PADDLE_SPEED = 480
+PADDLE_BOTTOM_MARGIN = 40  # was effectively 40 before
+
 
 BALL_RADIUS = 8
 BALL_SPEED = 420
 
-COUNTDOWN_SECONDS = 45
+COUNTDOWN_SECONDS = 120
+BREAKER_DELAY_SECONDS = 15
+
+EXPLOSION_RADIUS = 80
+PLACER_BUFF_AMOUNT = 2
 
 _last_timer_send_ms = 0
 _last_game_over_sent = False
 _last_state_send_ms = 0
 
+_explosion_pending_sync = False
+
 # Window setup
 screen = pygame.display.set_mode((WID, HEI))
-pygame.display.set_caption("Brick Breaker Game")
+pygame.display.set_caption("Lego Brick Breaker")
 clock = pygame.time.Clock()
 
 FONT_S = pygame.font.SysFont(None, 24)
@@ -51,13 +59,16 @@ def now_ms():
 @dataclass
 class State:
     paddle: Paddle = field(
-        default_factory=lambda: Paddle((WID - PADDLE_W) // 2, HEI - 40, PADDLE_W)
+        default_factory=lambda: Paddle((WID - PADDLE_W) // 2, HEI - PADDLE_BOTTOM_MARGIN, PADDLE_W)
     )
+
     ball_pos: pygame.Vector2 = field(
         default_factory=lambda: pygame.Vector2(
-            (WID - PADDLE_W) // 2 + PADDLE_W // 2, HEI - 40 - BALL_RADIUS - 1
+            (WID - PADDLE_W) // 2 + PADDLE_W // 2,
+            HEI - PADDLE_BOTTOM_MARGIN - BALL_RADIUS - 1
         )
     )
+
     ball_vel: pygame.Vector2 = field(default_factory=lambda: pygame.Vector2(0, 0))
     launched: bool = False
 
@@ -77,7 +88,6 @@ class State:
 S = State()
 
 
-# Brick layout (temporary demo bricks)
 def make_demo_bricks():
     bricks: list[Brick] = []
     cols, rows = 10, 6
@@ -105,29 +115,54 @@ def make_demo_bricks():
 
 def _serialize_bricks(bricks: list[Brick]) -> list[dict]:
     return [
-        {"x": brick.rect().x, "y": brick.rect().y, "w": brick.studs_x, "h": brick.studs_y}
+        {"x": brick.rect().x, "y": brick.rect().y, "w": brick.studs_x, "h": brick.studs_y, "color": brick.color_key}
         for brick in bricks
     ]
 
+def _apply_placer_buff():
+    for b in S.bricks:
+        if not b.unbreakable:
+            b.hits_left += PLACER_BUFF_AMOUNT
 
-# Launch ball
+def _apply_explosion(center_brick: Brick):
+    global _explosion_pending_sync
+    cx, cy = center_brick.rect().center
+    survivors: list[Brick] = []
+    for b in S.bricks:
+        if b.unbreakable:
+            survivors.append(b)
+            continue
+
+        dx = b.rect().centerx - cx
+        dy = b.rect().centery - cy
+        if dx * dx + dy * dy <= EXPLOSION_RADIUS * EXPLOSION_RADIUS:
+            b.hits_left -= 2
+            if b.hits_left <= 0:
+                continue
+        survivors.append(b)
+    S.bricks = survivors
+    _explosion_pending_sync = True
+
+
 def launch_ball():
+    # Do not allow launching before the placer has started the round
+    if not S.timer_running:
+        return
+
     # Ball launch delay logic
     if S.breaker_delay_active:
         elapsed = (now_ms() - S.breaker_delay_start_ms) // 1000
-        if elapsed < 15:
+        if elapsed < BREAKER_DELAY_SECONDS:
             return
         else:
             S.breaker_delay_active = False
+
     if S.launched or S.game_over or S.player_won:
         return
+
     S.launched = True
     S.ball_vel.update(BALL_SPEED * 0.45, -BALL_SPEED)
     S.ball_vel.scale_to_length(BALL_SPEED)
-
-    if not S.timer_running:
-        S.timer_running = True
-        S.time_start_ms = now_ms()
 
 
 # Timer update
@@ -138,7 +173,6 @@ def update_timer():
     S.time_left = max(0, COUNTDOWN_SECONDS - elapsed)
     if S.time_left == 0:
         S.game_over = True
-
 
 # Paddle movement
 def move_paddle(dt):
@@ -218,6 +252,10 @@ def collide_bricks():
                 S.ball_vel.y *= -1
             if not brick.unbreakable:
                 brick.hits_left -= 1
+                if brick.hits_left <= 0 and brick.color_key == "pink":
+                    center_brick = S.bricks.pop(i)
+                    _apply_explosion(center_brick)
+                    return None
                 if brick.hits_left <= 0:
                     S.bricks.pop(i)
                     return i
@@ -231,6 +269,18 @@ def collide_bricks():
 def draw():
     screen.fill(BG)
 
+    # --- Draw board area (to match placer) ---
+    BOARD_HEIGHT = 400      # same as placer ZONE_H
+    BOARD_RECT = pygame.Rect(0, 0, WID, BOARD_HEIGHT)
+
+    # Optional: fill board area slightly lighter to match placer aesthetics
+    BOARD_BG = (30, 30, 34)   # or tweak as desired
+    pygame.draw.rect(screen, BOARD_BG, BOARD_RECT)
+
+    # Draw border around board
+    pygame.draw.rect(screen, OUTLINE, BOARD_RECT, width=2)
+    # ------------------------------------------
+
     for brick in S.bricks:
         draw_brick(screen, brick)
 
@@ -242,6 +292,17 @@ def draw():
 
     timer = FONT_M.render(f"Time: {S.time_left:02d}s", True, WHITE)
     screen.blit(timer, (WID - timer.get_width() - 16, 10))
+
+    # Breaker launch delay
+    if not S.launched and not (S.game_over or S.player_won):
+        if S.breaker_delay_active:
+            remaining = BREAKER_DELAY_SECONDS - (now_ms() - S.breaker_delay_start_ms) // 1000
+        else:
+            remaining = BREAKER_DELAY_SECONDS
+        remaining = max(0, remaining)
+
+        delay = FONT_S.render(f"Launch available in: {remaining:2d}s", True, WHITE)
+        screen.blit(delay, (WID - delay.get_width() - 16, 10 + FONT_M.get_height() + 6))
 
     if S.player_won:
         msg = FONT_L.render("You Win!", True, WHITE)
@@ -287,7 +348,13 @@ def _pump_incoming_host_for_sync(net):
         elif t == "brick_add":
             if S.game_over or S.player_won:
                 continue  # ignore adds after round ends
-            r = Brick(msg["x"], msg["y"], msg["w"], msg["h"], "red")
+
+            color = msg.get("color", "red") # PHOEBE: Get brick color
+
+            if color == "purple": # PHOEBE: powerup logic
+                _apply_placer_buff() # PHOEBE: powerup logic
+
+            r = Brick(msg["x"], msg["y"], msg["w"], msg["h"], color) # PHOEBE: removed "red"/change to color
             S.bricks.append(r)
             # 15 second delay until ball launch starts when placer places first brick
             if not S.breaker_delay_active:
@@ -305,7 +372,7 @@ def _pump_incoming_host_for_sync(net):
 
 # Main
 def main(net=None):
-    global _last_timer_send_ms, _last_game_over_sent, _last_state_send_ms
+    global _last_timer_send_ms, _last_game_over_sent, _last_state_send_ms, _explosion_pending_sync
     if not pygame.get_init():
         pygame.init()
 
@@ -339,6 +406,10 @@ def main(net=None):
             removed = collide_bricks()
             if net and getattr(net, "is_host", False) and removed is not None:
                 net.send({"type": "brick_remove", "index": removed})
+
+        if net and getattr(net, "is_host", False) and _explosion_pending_sync and not (S.game_over or S.player_won):
+            net.send({"type": "sync_bricks", "bricks": _serialize_bricks(S.bricks)})
+            _explosion_pending_sync = False
 
                 # Send paddle/ball render state to placer ~30 Hz
         if net and getattr(net, "is_host", False) and not (S.game_over or S.player_won):

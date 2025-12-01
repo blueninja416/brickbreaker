@@ -40,7 +40,7 @@ H_MIN, H_MAX = 1, 2
 QUEUE_SIZE = 6
 
 # Timers
-BUILD_SECONDS = 45
+BUILD_SECONDS = 120
 COOLDOWN_MS = 1000
 
 # Window popup - will be initialized in main()
@@ -110,8 +110,12 @@ def ui_text(surf, text, font, pos):
 # --- Network helpers for sync ---
 def _deserialize_bricks(items: list[dict]) -> list[tuple[pygame.Rect, tuple]]:
     """Convert [{'x','y','w','h'}, ...] to [(Rect, WHITE), ...] to match S.bricks format."""
-    return [(Brick(it["x"], it["y"], it["w"], it["h"], "red"), WHITE) for it in items]
-
+    bricks = []
+    for it in items:
+        color = it.get("color", "red")
+        b = Brick(it["x"], it["y"], it["w"], it["h"], color)
+        bricks.append((b, color))
+    return bricks
 
 def pump_incoming_client_for_sync(net):
     """Client (placer) applies full map and timer sent by host breaker."""
@@ -169,7 +173,18 @@ def fill_queue(state: State):
     while len(state.queue) < QUEUE_SIZE:
         w = random.randint(W_MIN, W_MAX)
         h = random.randint(H_MIN, H_MAX)
-        state.queue.append((w, h, random.choice(BRICK_PALETTE)))
+
+        base_color = random.choice(BRICK_PALETTE)
+        roll = random.random()
+
+        if roll < 0.06:
+            color = "purple"
+        elif roll < 0.10:
+            color = "pink"
+        else:
+            color = base_color
+
+        state.queue.append((w, h, color))
 
 
 def can_place(state: State) -> bool:
@@ -206,7 +221,7 @@ def place_from_queue(state: State, mouse_pos, net=None):
 
     # Tell the host breaker about this new brick (protocol unchanged)
     if net and not getattr(net, "is_host", False):
-        net.send({"type": "brick_add", "x": r.x, "y": r.y, "w": r.studs_x, "h": r.studs_y})
+        net.send({"type": "brick_add", "x": r.x, "y": r.y, "w": r.studs_x, "h": r.studs_y, "color": color})
 
     state.queue.pop(0)
     fill_queue(state)
