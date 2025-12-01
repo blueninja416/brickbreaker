@@ -22,6 +22,8 @@ OUTLINE = (140, 140, 140)
 
 PADDLE_W, PADDLE_H = 10, 1
 PADDLE_SPEED = 480
+PADDLE_BOTTOM_MARGIN = 40  # was effectively 40 before
+
 
 BALL_RADIUS = 8
 BALL_SPEED = 420
@@ -57,13 +59,16 @@ def now_ms():
 @dataclass
 class State:
     paddle: Paddle = field(
-        default_factory=lambda: Paddle((WID - PADDLE_W) // 2, HEI - 40, PADDLE_W)
+        default_factory=lambda: Paddle((WID - PADDLE_W) // 2, HEI - PADDLE_BOTTOM_MARGIN, PADDLE_W)
     )
+
     ball_pos: pygame.Vector2 = field(
         default_factory=lambda: pygame.Vector2(
-            (WID - PADDLE_W) // 2 + PADDLE_W // 2, HEI - 40 - BALL_RADIUS - 1
+            (WID - PADDLE_W) // 2 + PADDLE_W // 2,
+            HEI - PADDLE_BOTTOM_MARGIN - BALL_RADIUS - 1
         )
     )
+
     ball_vel: pygame.Vector2 = field(default_factory=lambda: pygame.Vector2(0, 0))
     launched: bool = False
 
@@ -140,6 +145,10 @@ def _apply_explosion(center_brick: Brick):
 
 
 def launch_ball():
+    # Do not allow launching before the placer has started the round
+    if not S.timer_running:
+        return
+
     # Ball launch delay logic
     if S.breaker_delay_active:
         elapsed = (now_ms() - S.breaker_delay_start_ms) // 1000
@@ -147,15 +156,13 @@ def launch_ball():
             return
         else:
             S.breaker_delay_active = False
+
     if S.launched or S.game_over or S.player_won:
         return
+
     S.launched = True
     S.ball_vel.update(BALL_SPEED * 0.45, -BALL_SPEED)
     S.ball_vel.scale_to_length(BALL_SPEED)
-
-    if not S.timer_running:
-        S.timer_running = True
-        S.time_start_ms = now_ms()
 
 
 # Timer update
@@ -261,6 +268,18 @@ def collide_bricks():
 # Draw
 def draw():
     screen.fill(BG)
+
+    # --- Draw board area (to match placer) ---
+    BOARD_HEIGHT = 400      # same as placer ZONE_H
+    BOARD_RECT = pygame.Rect(0, 0, WID, BOARD_HEIGHT)
+
+    # Optional: fill board area slightly lighter to match placer aesthetics
+    BOARD_BG = (30, 30, 34)   # or tweak as desired
+    pygame.draw.rect(screen, BOARD_BG, BOARD_RECT)
+
+    # Draw border around board
+    pygame.draw.rect(screen, OUTLINE, BOARD_RECT, width=2)
+    # ------------------------------------------
 
     for brick in S.bricks:
         draw_brick(screen, brick)
