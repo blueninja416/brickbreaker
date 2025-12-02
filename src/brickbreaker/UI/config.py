@@ -13,7 +13,7 @@ TOP_MARGIN = 28
 SIDE_MARGIN_DEFAULT = 16  # varied per level for tighter/wider arenas
 
 # LEGO sizing (pixels, in the low-res surface)
-STUD_UNIT = 12  # width of a single stud cell
+STUD_UNIT = 16  # width of a single stud cell
 BRICK_HEIGHT = 8  # side-view brick height (studs_y doesn't change this)
 STUD_RADIUS = 3  # visual radius (some modules set their own local value)
 
