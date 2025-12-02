@@ -13,9 +13,9 @@ from .graphics import darker, lighter
 
 
 # Visual tuning for side-view studs
-STUD_RADIUS = 3  # radius of the semicircle studs on the top edge
+STUD_RADIUS = max(3, STUD_UNIT // 3)  # radius of the semicircle studs on the top edge
 STUD_RIM_THICK = 1  # rim thickness for the stud outline
-STUD_TOP_OFFSET = 0  # vertical offset from brick top for stud bases
+STUD_TOP_OFFSET = max(0, STUD_UNIT // 10)  # vertical offset from brick top for stud bases
 
 
 @dataclass
