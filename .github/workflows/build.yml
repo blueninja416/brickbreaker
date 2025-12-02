@@ -36,7 +36,7 @@ jobs:
 
       - name: Build executable
         run: |
-          pyinstaller --onefile --name ${{ matrix.asset_name }} src/brickbreaker/breaker.py
+          pyinstaller --onefile --name ${{ matrix.asset_name }} src/brickbreaker/__main__.py
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v5
