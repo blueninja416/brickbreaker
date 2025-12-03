@@ -44,14 +44,6 @@ _last_state_send_ms = 0
 
 _explosion_pending_sync = False
 
-# in breaker.py, right after set_mode
-screen = pygame.display.set_mode(WINDOW_SIZE)
-print("WINDOW_SIZE requested:", WINDOW_SIZE)
-print("screen.get_size() actual:", screen.get_size())
-
-pygame.display.set_caption("Lego Brick Breaker")
-clock = pygame.time.Clock()
-
 FONT_S = pygame.font.SysFont(None, 24)
 FONT_M = pygame.font.SysFont(None, 28)
 FONT_L = pygame.font.SysFont(None, 64)
@@ -414,8 +406,17 @@ def _pump_incoming_host_for_sync(net):
 # Main
 def main(net=None):
     global _last_timer_send_ms, _last_game_over_sent, _last_state_send_ms, _explosion_pending_sync
+    global screen, clock
+
+    # Make sure pygame core and display are initialized (menu may have called display.quit())
     if not pygame.get_init():
         pygame.init()
+    if not pygame.display.get_init():
+        pygame.display.init()
+
+    # Window setup
+    screen = pygame.display.set_mode(WINDOW_SIZE)
+    clock = pygame.time.Clock()
 
     # Title by role
     if net and getattr(net, "is_host", False):

@@ -275,6 +275,7 @@ def run_menu(error_message: str | None = None):
                 if e.type == pg.KEYDOWN and e.key == pg.K_RETURN:
                     ip = ip_box.value()
                     if ip:
+                        pg.display.quit()
                         return {"mode": "join", "join_ip": ip, "port": default_port}
                 if e.type == pg.KEYDOWN and e.key == pg.K_ESCAPE:
                     stage = "menu"
@@ -325,4 +326,5 @@ def run_menu(error_message: str | None = None):
         # If the user chose "Host" we show the info screen for a frame, then
         # immediately return to let the main program open the socket.
         if stage == "host" and auto_host:
+            pg.display.quit()
             return {"mode": "host", "host_ip": host_ip, "port": default_port}
