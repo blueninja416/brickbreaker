@@ -264,15 +264,6 @@ def collide_bricks():
     return None
 
 def draw_hud():
-
-    # DEBUG: Draw a grey outline around the entire game board
-    pygame.draw.rect(screen, OUTLINE, BOARD_RECT, width=1)
-
-    # DEBUG: translucent background fill
-    debug_overlay = pygame.Surface((BOARD_RECT.width, BOARD_RECT.height), pygame.SRCALPHA)
-    debug_overlay.fill((255, 255, 255, 25))   # 10% white transparency
-    screen.blit(debug_overlay, BOARD_RECT.topleft)
-
     # Top HUD band across the whole window
     pygame.draw.rect(screen, (15, 15, 18), HUD_RECT)
     pygame.draw.line(
@@ -333,9 +324,6 @@ def draw():
 
     # Draw HUD on top
     draw_hud()
-
-    # DEBUG
-    pygame.draw.line(screen, (255, 0, 0), (SCREEN_W - 1, 0), (SCREEN_W - 1, SCREEN_H))
 
     if S.player_won:
         msg = FONT_L.render("You Win!", True, WHITE)
