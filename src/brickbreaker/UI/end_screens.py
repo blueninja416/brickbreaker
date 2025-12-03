@@ -204,7 +204,6 @@ def run_end_screen(role: str, won: bool) -> None:
 
     if crumble:
         run_crumble_reveal(screen, low, message)
-        return
 
     # Static LEGO title (no build animation)
     clock = pg.time.Clock()

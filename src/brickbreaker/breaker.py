@@ -9,6 +9,7 @@ import pygame
 from brickbreaker.UI.ball import Ball, draw_ball_stud
 from brickbreaker.UI.bricks import Brick, draw_brick
 from brickbreaker.UI.paddle import Paddle  # non-blocking reads from net.incoming
+from brickbreaker.UI.end_screens import run_end_screen
 from brickbreaker.world import BOARD_W, BOARD_H
 from brickbreaker.layout import get_breaker_layout, world_to_screen
 
@@ -76,6 +77,7 @@ class State:
 
     game_over: bool = False
     player_won: bool = False
+    end_shown: bool = False
 
     breaker_delay_start_ms: int = 0
     breaker_delay_active: bool = False
@@ -499,6 +501,12 @@ def main(net=None):
             # Optional “one last update when stopping” logic is now also
             # suppressed once the game is over by the outer guard.
         draw()
+
+        # UI-only: show end screen once the round is finished (breaker perspective)
+        if (S.game_over or S.player_won) and not S.end_shown:
+            run_end_screen("breaker", bool(S.player_won))
+            S.end_shown = True
+            return
 
 
 if __name__ == "__main__":

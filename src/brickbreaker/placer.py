@@ -338,16 +338,20 @@ def draw_sidebar(state: State):
     y += 20
 
     # queue preview
-    for w, h, color in state.queue[:6]:
+    for studs_x, studs_y, color in state.queue[:6]:
         box = pygame.Rect(SIDEBAR.left + 16, y, 160, 42)
         pygame.draw.rect(screen, (26, 26, 32), box, border_radius=6)
         pygame.draw.rect(screen, OUTLINE, box, 1, border_radius=6)
 
-        scale = min((box.width - 14) / w, (box.height - 14) / h, 1.0)
-        bw, bh = max(6, int(w * scale)), max(6, int(h * scale))
-        bx = box.centerx - bw // 2
-        by = box.centery - bh // 2
-        draw_brick(screen, Brick(bx, by, w, h, color))
+        # Build a dummy brick at (0, 0) to get its real pixel size
+        dummy = Brick(0, 0, studs_x, studs_y, color)
+        r = dummy.rect()  # width = studs_x * STUD_UNIT, height = BRICK_HEIGHT
+
+        # Center the brick inside the box using its true size
+        bx = box.centerx - r.width // 2
+        by = box.centery - r.height // 2
+
+        draw_brick(screen, Brick(bx, by, studs_x, studs_y, color))
         y += 60
 
 
