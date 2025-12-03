@@ -2,19 +2,23 @@
 
 import queue
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 import pygame
 
 from brickbreaker.UI.ball import Ball, draw_ball_stud
 from brickbreaker.UI.bricks import Brick, draw_brick
 from brickbreaker.UI.paddle import Paddle  # non-blocking reads from net.incoming
+from brickbreaker.world import BOARD_W, BOARD_H
+from brickbreaker.layout import get_breaker_layout, world_to_screen
 
 if not pygame.get_init():
     pygame.init()
 
 # Configure
-WID, HEI = 900, 600
+WINDOW_SIZE, BOARD_RECT, HUD_RECT = get_breaker_layout()
+SCREEN_W, SCREEN_H = WINDOW_SIZE      # actual OS window size
+WID, HEI = BOARD_W, BOARD_H           # logical game-world size
 FPS = 60
 BG = (18, 18, 22)
 WHITE = (255, 255, 255)
@@ -40,8 +44,11 @@ _last_state_send_ms = 0
 
 _explosion_pending_sync = False
 
-# Window setup
-screen = pygame.display.set_mode((WID, HEI))
+# in breaker.py, right after set_mode
+screen = pygame.display.set_mode(WINDOW_SIZE)
+print("WINDOW_SIZE requested:", WINDOW_SIZE)
+print("screen.get_size() actual:", screen.get_size())
+
 pygame.display.set_caption("Lego Brick Breaker")
 clock = pygame.time.Clock()
 
@@ -264,36 +271,36 @@ def collide_bricks():
                 return None
     return None
 
+def draw_hud():
 
-# Draw
-def draw():
-    screen.fill(BG)
+    # DEBUG: Draw a grey outline around the entire game board
+    pygame.draw.rect(screen, OUTLINE, BOARD_RECT, width=1)
 
-    # --- Draw board area (to match placer) ---
-    BOARD_HEIGHT = 400      # same as placer ZONE_H
-    BOARD_RECT = pygame.Rect(0, 0, WID, BOARD_HEIGHT)
+    # DEBUG: translucent background fill
+    debug_overlay = pygame.Surface((BOARD_RECT.width, BOARD_RECT.height), pygame.SRCALPHA)
+    debug_overlay.fill((255, 255, 255, 25))   # 10% white transparency
+    screen.blit(debug_overlay, BOARD_RECT.topleft)
 
-    # Optional: fill board area slightly lighter to match placer aesthetics
-    BOARD_BG = (30, 30, 34)   # or tweak as desired
-    pygame.draw.rect(screen, BOARD_BG, BOARD_RECT)
+    # Top HUD band across the whole window
+    pygame.draw.rect(screen, (15, 15, 18), HUD_RECT)
+    pygame.draw.line(
+        screen,
+        OUTLINE,
+        (HUD_RECT.left, HUD_RECT.bottom),
+        (HUD_RECT.right, HUD_RECT.bottom),
+        1,
+    )
 
-    # Draw border around board
-    pygame.draw.rect(screen, OUTLINE, BOARD_RECT, width=2)
-    # ------------------------------------------
-
-    for brick in S.bricks:
-        draw_brick(screen, brick)
-
-    S.paddle.draw(screen)
-    draw_ball_stud(screen, Ball(int(S.ball_pos.x), int(S.ball_pos.y)))
-
+    # Left: controls / instructions
     ui_top = "Arrow keys or A/D to move   |   Space to launch"
-    screen.blit(FONT_S.render(ui_top, True, WHITE), (12, 10))
+    txt = FONT_S.render(ui_top, True, WHITE)
+    screen.blit(txt, (HUD_RECT.left + 16, HUD_RECT.top + 8))
 
+    # Right: timer
     timer = FONT_M.render(f"Time: {S.time_left:02d}s", True, WHITE)
-    screen.blit(timer, (WID - timer.get_width() - 16, 10))
+    screen.blit(timer, (HUD_RECT.right - timer.get_width() - 16, HUD_RECT.top + 6))
 
-    # Breaker launch delay
+    # Launch delay info under the timer
     if not S.launched and not (S.game_over or S.player_won):
         if S.breaker_delay_active:
             remaining = BREAKER_DELAY_SECONDS - (now_ms() - S.breaker_delay_start_ms) // 1000
@@ -302,15 +309,49 @@ def draw():
         remaining = max(0, remaining)
 
         delay = FONT_S.render(f"Launch available in: {remaining:2d}s", True, WHITE)
-        screen.blit(delay, (WID - delay.get_width() - 16, 10 + FONT_M.get_height() + 6))
+        screen.blit(
+            delay,
+            (
+                HUD_RECT.right - delay.get_width() - 16,
+                HUD_RECT.top + 6 + FONT_M.get_height() + 6,
+            ),
+        )
+
+# Draw
+def draw():
+    screen.fill(BG)
+
+    for brick in S.bricks:
+        # Brick lives in world space; map to screen space for drawing
+        r_world = brick.rect()
+        bx, by = world_to_screen(r_world.topleft, BOARD_RECT)
+
+        # Make a temporary screen-space copy so we don't mutate game state
+        b_screen = replace(brick, x=bx, y=by)
+        draw_brick(screen, b_screen)
+
+    # Paddle: world -> screen
+    px, py = world_to_screen((S.paddle.x, S.paddle.y), BOARD_RECT)
+    p_screen = replace(S.paddle, x=px, y=py)
+    p_screen.draw(screen)
+
+    # Ball: world -> screen
+    bx, by = world_to_screen((S.ball_pos.x, S.ball_pos.y), BOARD_RECT)
+    draw_ball_stud(screen, Ball(int(bx), int(by)))
+
+    # Draw HUD on top
+    draw_hud()
+
+    # DEBUG
+    pygame.draw.line(screen, (255, 0, 0), (SCREEN_W - 1, 0), (SCREEN_W - 1, SCREEN_H))
 
     if S.player_won:
         msg = FONT_L.render("You Win!", True, WHITE)
-        screen.blit(msg, msg.get_rect(center=(WID // 2, HEI // 2)))
+        screen.blit(msg, msg.get_rect(center=(SCREEN_W // 2, SCREEN_H // 2)))
 
     elif S.game_over:
         msg = FONT_L.render("Time's Up", True, WHITE)
-        screen.blit(msg, msg.get_rect(center=(WID // 2, HEI // 2)))
+        screen.blit(msg, msg.get_rect(center=(SCREEN_W // 2, SCREEN_H // 2)))
 
     pygame.display.flip()
 
