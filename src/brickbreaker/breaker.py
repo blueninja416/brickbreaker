@@ -58,14 +58,11 @@ def now_ms():
 @dataclass
 class State:
     paddle: Paddle = field(
-        default_factory=lambda: Paddle((WID - PADDLE_W) // 2, HEI - PADDLE_BOTTOM_MARGIN, PADDLE_W)
+        default_factory=lambda: Paddle(0, 0, PADDLE_W)
     )
 
     ball_pos: pygame.Vector2 = field(
-        default_factory=lambda: pygame.Vector2(
-            (WID - PADDLE_W) // 2 + PADDLE_W // 2,
-            HEI - PADDLE_BOTTOM_MARGIN - BALL_RADIUS - 1
-        )
+        default_factory=lambda: pygame.Vector2(0, 0)
     )
 
     ball_vel: pygame.Vector2 = field(default_factory=lambda: pygame.Vector2(0, 0))
@@ -86,6 +83,21 @@ class State:
 
 S = State()
 
+def reset_initial_positions():
+    """Place paddle and ball centered on the board in world coordinates."""
+    # Center paddle by its *pixel* width
+    S.paddle.x = (WID - S.paddle.w) // 2
+    S.paddle.y = HEI - PADDLE_BOTTOM_MARGIN
+
+    # Put ball centered on the paddle, just above it
+    paddle_rect = S.paddle.rect()
+    S.ball_pos.update(
+        paddle_rect.centerx,
+        paddle_rect.top - BALL_RADIUS - 1,
+    )
+
+# Do this once at startup
+reset_initial_positions()
 
 def make_demo_bricks():
     bricks: list[Brick] = []
@@ -179,11 +191,21 @@ def move_paddle(dt):
     dx = int(keys[pygame.K_RIGHT] or keys[pygame.K_d]) - int(
         keys[pygame.K_LEFT] or keys[pygame.K_a]
     )
-    S.paddle.x += int(dx * PADDLE_SPEED * dt)
-    S.paddle.rect().clamp_ip(pygame.Rect(0, 0, WID, HEI))
 
+    if dx != 0:
+        S.paddle.x += int(dx * PADDLE_SPEED * dt)
+
+        # Hard clamp: keep paddle fully inside [0, WID]
+        # S.paddle.w is the paddle's pixel width
+        if S.paddle.x < 0:
+            S.paddle.x = 0
+        if S.paddle.x + S.paddle.w > WID:
+            S.paddle.x = WID - S.paddle.w
+
+    # Keep ball riding on the paddle until launch
     if not S.launched:
-        S.ball_pos.update(S.paddle.rect().centerx, S.paddle.rect().top - BALL_RADIUS - 1)
+        r = S.paddle.rect()
+        S.ball_pos.update(r.centerx, r.top - BALL_RADIUS - 1)
 
 
 # Ball movement
