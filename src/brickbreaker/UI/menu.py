@@ -365,16 +365,18 @@ def run_menu(error_message: str | None = None):
 
         elif stage == "howto":
             draw_pixel_text(low, "How to play", GAME_W // 2 - 40, 40, COLORS["hud"])
-            draw_pixel_text(low, "Breaker (host):", 24, 56, COLORS["hud"])
-            draw_pixel_text(low, "Arrows/A,D move paddle.", 24, 68, COLORS["hud_dim"])
-            draw_pixel_text(low, "Space launches the ball.", 24, 80, COLORS["hud_dim"])
-            draw_pixel_text(low, "Score by hitting top wall.", 24, 92, COLORS["hud_dim"])
-            draw_pixel_text(low, "Timer 0: breaker loses.", 24, 104, COLORS["hud_dim"])
-            draw_pixel_text(low, "Placer (client):", 24, 122, COLORS["hud"])
-            draw_pixel_text(low, "Click in grey zone to build.", 24, 134, COLORS["hud_dim"])
-            draw_pixel_text(low, "Queue on right shows next.", 24, 146, COLORS["hud_dim"])
-            draw_pixel_text(low, "Time up + bricks left: placer wins.", 24, 158, COLORS["hud_dim"])
-            draw_pixel_text(low, "Press ESC or click to return.", 24, 174, COLORS["hud_dim"])
+
+            y = 56
+            draw_pixel_text(low, "Breaker (host):", 24, y, COLORS["hud"]); y += 12
+            draw_pixel_text(low, "Score by hitting top wall.", 24, y, COLORS["hud_dim"]); y += 12
+            draw_pixel_text(low, "Timer 0: breaker loses.", 24, y, COLORS["hud_dim"]); y += 16
+
+            draw_pixel_text(low, "Placer (client):", 24, y, COLORS["hud"]); y += 12
+            draw_pixel_text(low, "Click in grey zone to build.", 24, y, COLORS["hud_dim"]); y += 12
+            draw_pixel_text(low, "Queue on right shows next brick.", 24, y, COLORS["hud_dim"]); y += 12
+            draw_pixel_text(low, "Time up: placer wins.", 24, y, COLORS["hud_dim"]); y += 16
+
+            draw_pixel_text(low, "Press ESC or click to return.", 24, y, COLORS["hud_dim"])
 
         up = pg.transform.scale(low, (GAME_W * SCALE, GAME_H * SCALE))
         screen.blit(up, (0, 0))
