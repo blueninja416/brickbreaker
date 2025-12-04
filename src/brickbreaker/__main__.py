@@ -25,10 +25,15 @@ def _main():
             error_message = None
             if not sel:
                 return
+
             if sel["mode"] == "host":
-                net = NetNode.host(port=sel["port"])
+                # Prefer a NetNode created by the menu via host_async, if provided.
+                net = sel.get("net_node")
+                if net is None:
+                    net = NetNode.host(port=sel["port"])
                 args = SimpleNamespace(host=True, join=None, port=sel["port"], role="breaker")
                 break
+
             else:
                 try:
                     net = NetNode.join(sel["join_ip"], port=sel["port"])

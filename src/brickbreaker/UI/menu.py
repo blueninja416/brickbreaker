@@ -194,6 +194,20 @@ def draw_title_bricks(surf: pg.Surface, text: str, x: int, y: int):
         cx += brick_w + gap
         ci += 1
 
+def title_bricks_width(text: str) -> int:
+    """Return the pixel width of the title rendered by draw_title_bricks."""
+    brick_w = 12
+    gap = 2
+    width = 0
+    for ch in text:
+        if ch == " ":
+            width += brick_w // 2
+        else:
+            width += brick_w + gap
+    if width > 0:
+        width -= gap  # remove trailing gap for nicer centering
+    return width
+
 
 # ------------------------------ Networking utils ------------------------ #
 
@@ -221,6 +235,11 @@ def run_menu(error_message: str | None = None):
     clock = pg.time.Clock()
     low = pg.Surface((GAME_W, GAME_H))
 
+    from brickbreaker.net.transport import NetNode
+
+    listener = None          # listening socket from host_async
+    host_node = None         # NetNode created when client connects
+
     # Buttons
     btn_w = 180
     btn_h = 22
@@ -230,18 +249,22 @@ def run_menu(error_message: str | None = None):
     join_btn = BrickButton(
         pg.Rect(GAME_W // 2 - btn_w // 2, 110, btn_w, btn_h), "Join game as Placer", "blue"
     )
+    how_btn = BrickButton(
+        pg.Rect(GAME_W // 2 - btn_w // 2, 140, btn_w, btn_h), "How to play", "red"
+    )
 
     # Join inputs (only IP; port is fixed to DEFAULT_PORT)
-    ip_box = InputBox(pg.Rect(GAME_W // 2 - 90, 140, 120, 18), placeholder="Host IP")
+    ip_box = InputBox(
+        pg.Rect(GAME_W // 2 - 120 // 2, 140, 120, 18),
+        placeholder="Host IP"
+    )
 
     # Host info
     default_port = DEFAULT_PORT
     host_ip = get_local_ip()
-    port_value = str(DEFAULT_PORT)
     join_error = error_message or ""
 
-    stage = "menu"  # "menu" | "host" | "join"
-    auto_host = False  # when True, auto-confirm host selection after drawing
+    stage = "menu"  # "menu" | "host" | "join" | "howto"
 
     running = True
     while running:
@@ -253,24 +276,32 @@ def run_menu(error_message: str | None = None):
                 pg.quit()
                 return None
             if e.type in (pg.MOUSEMOTION, pg.MOUSEBUTTONDOWN, pg.MOUSEBUTTONUP):
-                # Convert window mouse pos to low-res coordinates
                 mx, my = pg.mouse.get_pos()
                 mouse_pos_scaled = (mx // SCALE, my // SCALE)
-                # Temporarily override event pos so buttons get correct hit tests
                 if hasattr(e, "pos"):
                     e.pos = mouse_pos_scaled
 
             if stage == "menu":
                 host_btn.handle_event(e)
                 join_btn.handle_event(e)
+                how_btn.handle_event(e)
                 if e.type == pg.MOUSEBUTTONUP and e.button == 1:
                     if host_btn.clicked:
                         stage = "host"
-                        auto_host = True
+
+                        # Start async hosting in the background
+                        def on_accept(node):
+                            nonlocal host_node
+                            host_node = node
+
+                        listener = NetNode.host_async(default_port, on_accept)
+
                     elif join_btn.clicked:
                         stage = "join"
+                    elif how_btn.clicked:
+                        stage = "howto"
 
-            if stage == "join":
+            elif stage == "join":
                 ip_box.handle_event(e)
                 if e.type == pg.KEYDOWN and e.key == pg.K_RETURN:
                     ip = ip_box.value()
@@ -283,48 +314,79 @@ def run_menu(error_message: str | None = None):
             elif stage == "host":
                 if e.type == pg.KEYDOWN and e.key == pg.K_ESCAPE:
                     # Cancel hosting and go back to main menu
+                    if listener is not None:
+                        try:
+                            listener.close()
+                        except OSError:
+                            pass
+                        listener = None
+                    if host_node is not None:
+                        host_node.close()
+                        host_node = None
                     stage = "menu"
-                    auto_host = False
                     join_error = ""
+
+            elif stage == "howto":
+                if e.type == pg.KEYDOWN and e.key in (pg.K_ESCAPE, pg.K_RETURN, pg.K_SPACE):
+                    stage = "menu"
+                if e.type == pg.MOUSEBUTTONUP and e.button == 1:
+                    stage = "menu"
 
         # ------------------- Draw low-res frame ------------------- #
         low.fill(COLORS["bg"])
         draw_brick_border(low)
-        draw_title_bricks(low, "LEGO BRICK BREAK", x=22, y=18)
+
+        title_text = "LEGO BRICK BREAK"
+        title_w = title_bricks_width(title_text)
+        title_x = GAME_W // 2 - title_w // 2
+        draw_title_bricks(low, title_text, x=title_x, y=18)
 
         if stage == "menu":
             host_btn.draw(low)
             join_btn.draw(low)
+            how_btn.draw(low)
             draw_pixel_text(low, "Choose an option", GAME_W // 2 - 56, 60, COLORS["hud_dim"])
             if join_error:
-                # Show the last join error under the buttons on the main menu
                 draw_pixel_text(low, join_error, 32, 150, (255, 64, 64))
 
         elif stage == "join":
             draw_pixel_text(low, "Join as Placer", GAME_W // 2 - 52, 60, COLORS["hud"])
-            draw_pixel_text(
-                low, f"Enter host IP, then press Enter. Press ESC to return to main menu.", 8, 72, COLORS["hud_dim"]
-            )
+            draw_pixel_text(low, "Enter host IP, then press Enter.", 24, 72, COLORS["hud_dim"])
+            draw_pixel_text(low, "Press ESC to return to main menu.", 24, 84, COLORS["hud_dim"])
             ip_box.draw(low)
-            #if join_error:
-            #    draw_pixel_text(low, join_error, 32, 150, (255, 64, 64))
 
         elif stage == "host":
             draw_pixel_text(low, "Host as Breaker", GAME_W // 2 - 54, 60, COLORS["hud"])
-            draw_pixel_text(low, "Share this IP/Port with your opponent", 24, 72, COLORS["hud_dim"])
-            draw_pixel_text(low, f"Your IP: {host_ip}", 30, 96, (240, 240, 240))
-            draw_pixel_text(low, f"Port: {default_port}", 30, 110, (240, 240, 240))
-            draw_pixel_text(
-                low, "Waiting for player 2, or press ESC to go back", 24, 134, COLORS["hud_dim"]
-            )
+            draw_pixel_text(low, "Share this info with your opponent:", 24, 72, COLORS["hud_dim"])
+            draw_pixel_text(low, f"Your IP: {host_ip}", 24, 88, (240, 240, 240))
+            draw_pixel_text(low, f"Port: {default_port}", 24, 100, (240, 240, 240))
+            draw_pixel_text(low, "Waiting for player 2 to connect.", 24, 124, COLORS["hud_dim"])
+            draw_pixel_text(low, "Press ESC to return to main menu.", 24, 136, COLORS["hud_dim"])
 
-        # Upscale to the real window
+        elif stage == "howto":
+            draw_pixel_text(low, "How to play", GAME_W // 2 - 40, 40, COLORS["hud"])
+            draw_pixel_text(low, "Breaker (host):", 24, 56, COLORS["hud"])
+            draw_pixel_text(low, "Arrows/A,D move paddle.", 24, 68, COLORS["hud_dim"])
+            draw_pixel_text(low, "Space launches the ball.", 24, 80, COLORS["hud_dim"])
+            draw_pixel_text(low, "Score by hitting top wall.", 24, 92, COLORS["hud_dim"])
+            draw_pixel_text(low, "Timer 0: breaker loses.", 24, 104, COLORS["hud_dim"])
+            draw_pixel_text(low, "Placer (client):", 24, 122, COLORS["hud"])
+            draw_pixel_text(low, "Click in grey zone to build.", 24, 134, COLORS["hud_dim"])
+            draw_pixel_text(low, "Queue on right shows next.", 24, 146, COLORS["hud_dim"])
+            draw_pixel_text(low, "Time up + bricks left: placer wins.", 24, 158, COLORS["hud_dim"])
+            draw_pixel_text(low, "Press ESC or click to return.", 24, 174, COLORS["hud_dim"])
+
         up = pg.transform.scale(low, (GAME_W * SCALE, GAME_H * SCALE))
         screen.blit(up, (0, 0))
         pg.display.flip()
 
-        # If the user chose "Host" we show the info screen for a frame, then
-        # immediately return to let the main program open the socket.
-        if stage == "host" and auto_host:
+        # If we're on the Host screen and a client has connected (via host_async),
+        # exit the menu and hand the ready NetNode back to the main program.
+        if stage == "host" and host_node is not None:
             pg.display.quit()
-            return {"mode": "host", "host_ip": host_ip, "port": default_port}
+            return {
+                "mode": "host",
+                "host_ip": host_ip,
+                "port": default_port,
+                "net_node": host_node,
+            }
