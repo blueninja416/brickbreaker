@@ -6,6 +6,9 @@ BOARD_W / BOARD_H describe the full logical game area.
 ZONE_* describes the brick placement / brick play zone inside that world.
 Both breaker and placer should only place bricks inside ZONE_RECT, and
 all brick coordinates sent over the network are in world space.
+
+This separates the "game world" from the OS window, ensuring breaker and 
+placer have a commonly defined/shared view of the game map.
 """
 
 import pygame

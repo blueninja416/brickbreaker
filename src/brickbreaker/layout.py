@@ -25,7 +25,7 @@ def get_breaker_layout():
     """Return (window_size, board_rect, hud_rect) for the breaker role."""
     window_size = (BOARD_W, WINDOW_HEI)
 
-    # Full game board (entire world), shifted down under the HUD
+    # Full game board shifted down under the HUD
     board_rect = pygame.Rect(0, HUD_H, BOARD_W, BOARD_H)
 
     # HUD spans the full width, above the board

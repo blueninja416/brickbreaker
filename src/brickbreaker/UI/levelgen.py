@@ -8,7 +8,7 @@ from __future__ import annotations
 import random
 from typing import List, Tuple
 from config import (
-    GAME_W, GAME_H, TOP_MARGIN, SIDE_MARGIN_DEFAULT, STUD_UNIT,
+    GAME_W, TOP_MARGIN, SIDE_MARGIN_DEFAULT, STUD_UNIT,
     BRICK_PALETTE, BRICK_HEIGHT
 )
 from bricks import Brick

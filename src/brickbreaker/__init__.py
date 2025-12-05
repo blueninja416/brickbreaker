@@ -9,7 +9,7 @@ class Game:
     def run(self, net=None, args=None) -> None:
         """Run the game."""
         if args and args.role == "placer":
-            from . import placer
+            from . import placer # only import relevant modules
             placer.main(net)
             return
         elif args and args.role == "breaker":

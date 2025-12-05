@@ -16,7 +16,7 @@ from brickbreaker.layout import get_breaker_layout, world_to_screen
 if not pygame.get_init():
     pygame.init()
 
-# Configure
+# Configure window size, game area, etc
 WINDOW_SIZE, BOARD_RECT, HUD_RECT = get_breaker_layout()
 SCREEN_W, SCREEN_H = WINDOW_SIZE      # actual OS window size
 WID, HEI = BOARD_W, BOARD_H           # logical game-world size
@@ -25,14 +25,16 @@ BG = (18, 18, 22)
 WHITE = (255, 255, 255)
 OUTLINE = (140, 140, 140)
 
-PADDLE_W, PADDLE_H = 10, 1
+# configure the paddle
+PADDLE_W = 10
 PADDLE_SPEED = 480
-PADDLE_BOTTOM_MARGIN = 40  # was effectively 40 before
+PADDLE_BOTTOM_MARGIN = 40  # distance the paddle is from the bottom of the screen
 
-
+# configure the ball
 BALL_RADIUS = 8
 BALL_SPEED = 420
 
+# configure timers
 COUNTDOWN_SECONDS = 120
 BREAKER_DELAY_SECONDS = 15
 
@@ -49,11 +51,9 @@ FONT_S = pygame.font.SysFont(None, 24)
 FONT_M = pygame.font.SysFont(None, 28)
 FONT_L = pygame.font.SysFont(None, 64)
 
-
-# Time helper
 def now_ms():
+    """Return the current pygame clock time in milliseconds"""
     return pygame.time.get_ticks()
-
 
 # Game state
 @dataclass
@@ -82,11 +82,13 @@ class State:
     breaker_delay_start_ms: int = 0
     breaker_delay_active: bool = False
 
+    hud_status: str = ""
+
 
 S = State()
 
 def reset_initial_positions():
-    """Place paddle and ball centered on the board in world coordinates."""
+    """Place paddle and ball centered on the board in world coordinates"""
     # Center paddle by its *pixel* width
     S.paddle.x = (WID - S.paddle.w) // 2
     S.paddle.y = HEI - PADDLE_BOTTOM_MARGIN
@@ -98,46 +100,24 @@ def reset_initial_positions():
         paddle_rect.top - BALL_RADIUS - 1,
     )
 
-# Do this once at startup
+# Do this once at startup to ensure sync
 reset_initial_positions()
 
-def make_demo_bricks():
-    bricks: list[Brick] = []
-    cols, rows = 10, 6
-    gap = 4
-    left_margin = 20
-    top = 80
-    cell_w = (WID - 2 * left_margin) // cols
-    cell_h = 28
-
-    for r in range(rows):
-        for c in range(cols):
-            x = left_margin + c * cell_w + gap // 2
-            y = top + r * cell_h + gap // 2
-            w = cell_w - gap
-            h = cell_h - gap
-            # bricks.append(pygame.Rect(x, y, w, h))
-            bricks.append(Brick(x, y, 4, 1, "red"))
-
-    return bricks
-
-
-# Initial Setup Removed, only needed for testing, game needs to start with no initial grid.
-# S.bricks = make_demo_bricks()
-
-
 def _serialize_bricks(bricks: list[Brick]) -> list[dict]:
+    """Convert a list of Brick objects into simple dicts for network messages"""
     return [
         {"x": brick.rect().x, "y": brick.rect().y, "w": brick.studs_x, "h": brick.studs_y, "color": brick.color_key}
         for brick in bricks
     ]
 
 def _apply_placer_buff():
+    """Increase the durability of all breakable bricks as a placer power-up effect"""
     for b in S.bricks:
         if not b.unbreakable:
             b.hits_left += PLACER_BUFF_AMOUNT
 
 def _apply_explosion(center_brick: Brick):
+    """Apply an explosion around the given brick, damaging nearby bricks and marking state for sync"""
     global _explosion_pending_sync
     cx, cy = center_brick.rect().center
     survivors: list[Brick] = []
@@ -158,6 +138,8 @@ def _apply_explosion(center_brick: Brick):
 
 
 def launch_ball():
+    """Launch the ball from the paddle."""
+
     # Do not allow launching before the placer has started the round
     if not S.timer_running:
         return
@@ -177,9 +159,8 @@ def launch_ball():
     S.ball_vel.update(BALL_SPEED * 0.45, -BALL_SPEED)
     S.ball_vel.scale_to_length(BALL_SPEED)
 
-
-# Timer update
 def update_timer():
+    """Update the round countdown timer. Triggers game over if it hits 0"""
     if not S.timer_running or S.game_over or S.player_won:
         return
     elapsed = (now_ms() - S.time_start_ms) // 1000
@@ -187,8 +168,8 @@ def update_timer():
     if S.time_left == 0:
         S.game_over = True
 
-# Paddle movement
 def move_paddle(dt):
+    """Handles paddle movement, and ensure the ball stays attached to the paddle pre-launch"""
     keys = pygame.key.get_pressed()
     dx = int(keys[pygame.K_RIGHT] or keys[pygame.K_d]) - int(
         keys[pygame.K_LEFT] or keys[pygame.K_a]
@@ -209,9 +190,8 @@ def move_paddle(dt):
         r = S.paddle.rect()
         S.ball_pos.update(r.centerx, r.top - BALL_RADIUS - 1)
 
-
-# Ball movement
 def update_ball(dt):
+    """Handles ball movement, boundaries, and resets the ball when it falls off the map."""
     if not S.launched or S.game_over or S.player_won:
         return
 
@@ -232,9 +212,8 @@ def update_ball(dt):
         S.ball_vel.update(0, 0)
         S.ball_pos.update(S.paddle.rect().centerx, S.paddle.rect().top - BALL_RADIUS - 1)
 
-
-# Paddle collision
 def collide_paddle():
+    """Handles ball <> paddle collision. Bounces the ball based off impact offset along the paddle"""
     if not S.launched or S.game_over or S.player_won:
         return
 
@@ -248,9 +227,9 @@ def collide_paddle():
         S.ball_vel.x = (BALL_SPEED * 0.9) * offset
         S.ball_vel.scale_to_length(BALL_SPEED)
 
-
-# Brick collision
 def collide_bricks():
+    """Handles ball <> brick collision, updates brick HP, triggers explosions, and
+    returns a removed index for any bricks that are destroyed."""
     if not S.launched or S.game_over or S.player_won:
         return None
 
@@ -260,8 +239,11 @@ def collide_bricks():
         BALL_RADIUS * 2,
         BALL_RADIUS * 2
     )
+
     for i, brick in enumerate(S.bricks):
         r = brick.rect()
+
+        # Only process damage if the ball actually hits the brick
         if r.colliderect(ball_rect):
             overlap = [
                 ball_rect.right - r.left,
@@ -273,22 +255,34 @@ def collide_bricks():
                 S.ball_vel.x *= -1
             else:
                 S.ball_vel.y *= -1
+
             if not brick.unbreakable:
                 brick.hits_left -= 1
+
+                # Pink bricks trigger explosion + HUD message
                 if brick.hits_left <= 0 and brick.color_key == "pink":
+                    S.hud_status = "Pink brick: Boom!"
                     center_brick = S.bricks.pop(i)
                     _apply_explosion(center_brick)
                     return None
+
+                # Purple bricks give buff + HUD message
                 if brick.hits_left <= 0:
+                    if brick.color_key == "purple":
+                        S.hud_status = "Purple brick: +2 HP to all bricks!"
                     S.bricks.pop(i)
                     return i
+
                 return None
+
             else:
+                # Unbreakable brick hit, just bounce
                 return None
+
     return None
 
 def draw_hud():
-    # Top HUD band across the whole window
+    """Draws the top HUD bar. Can resize without impacting the game map."""
     pygame.draw.rect(screen, (15, 15, 18), HUD_RECT)
     pygame.draw.line(
         screen,
@@ -303,9 +297,13 @@ def draw_hud():
     txt = FONT_S.render(ui_top, True, WHITE)
     screen.blit(txt, (HUD_RECT.left + 16, HUD_RECT.top + 8))
 
-    # Right: timer
-    timer = FONT_M.render(f"Time: {S.time_left:02d}s", True, WHITE)
-    screen.blit(timer, (HUD_RECT.right - timer.get_width() - 16, HUD_RECT.top + 6))
+    # Optional status line 
+    if S.hud_status:
+        status_txt = FONT_S.render(S.hud_status, True, WHITE)
+        screen.blit(
+            status_txt,
+            (HUD_RECT.left + 16, HUD_RECT.top + 8 + FONT_S.get_height() + 4),
+        )
 
     # Launch delay info under the timer
     if not S.launched and not (S.game_over or S.player_won):
@@ -326,6 +324,7 @@ def draw_hud():
 
 # Draw
 def draw():
+    """Renders the full window and all its elements."""
     screen.fill(BG)
 
     for brick in S.bricks:
@@ -401,28 +400,24 @@ def _pump_incoming_host_for_sync(net):
 
             r = Brick(msg["x"], msg["y"], msg["w"], msg["h"], color) # PHOEBE: removed "red"/change to color
             S.bricks.append(r)
+
             # 15 second delay until ball launch starts when placer places first brick
             if not S.breaker_delay_active:
                 S.breaker_delay_active = True
                 S.breaker_delay_start_ms = now_ms()
-            if not S.timer_running:
-                S.timer_running = True
-                S.time_start_ms = now_ms()
-
-            # NEW: if timer hasn't started yet, start it now
             if not S.timer_running and not (S.game_over or S.player_won):
                 S.timer_running = True
                 S.time_start_ms = now_ms()
 
-
-# Main
 def main(net=None):
+    """Main breaker gameplay loop"""
     global _last_timer_send_ms, _last_game_over_sent, _last_state_send_ms, _explosion_pending_sync
     global screen, clock
 
     # Make sure pygame core and display are initialized (menu may have called display.quit())
     if not pygame.get_init():
         pygame.init()
+
     if not pygame.display.get_init():
         pygame.display.init()
 
@@ -434,7 +429,7 @@ def main(net=None):
     if net and getattr(net, "is_host", False):
         pygame.display.set_caption("Breaker (Host)")
     else:
-        pygame.display.set_caption("Breaker (Local)")
+        pygame.display.set_caption("Breaker (Local)") # unused, only for testing
 
     # Host proactively sends full map once (client may already be connected)
     if net and getattr(net, "is_host", False):
@@ -465,7 +460,7 @@ def main(net=None):
             net.send({"type": "sync_bricks", "bricks": _serialize_bricks(S.bricks)})
             _explosion_pending_sync = False
 
-                # Send paddle/ball render state to placer ~30 Hz
+        # Send paddle/ball render state to placer ~30 Hz
         if net and getattr(net, "is_host", False) and not (S.game_over or S.player_won):
             now = now_ms()
             if now - _last_state_send_ms > 33:  # ~30 Hz
@@ -498,8 +493,6 @@ def main(net=None):
                 if now - _last_timer_send_ms > 1000:
                     _last_timer_send_ms = now
                     net.send({"type": "timer_state", "time_left": int(S.time_left)})
-            # Optional “one last update when stopping” logic is now also
-            # suppressed once the game is over by the outer guard.
         draw()
 
         # UI-only: show end screen once the round is finished (breaker perspective)
@@ -507,7 +500,6 @@ def main(net=None):
             run_end_screen("breaker", bool(S.player_won))
             S.end_shown = True
             return
-
 
 if __name__ == "__main__":
     main()

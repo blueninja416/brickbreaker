@@ -37,7 +37,6 @@ class BrickButton:
     - Drawn entirely with vector shapes.
     - Call .handle_event(event) to update hover/active, .clicked to check clicks.
     """
-
     def __init__(self, rect: pg.Rect, label: str, color_key: str):
         self.rect = rect
         self.label = label
@@ -79,8 +78,7 @@ class BrickButton:
 
 
 class InputBox:
-    """Minimal text input (for IP/port). Set numeric_only=True for port input."""
-
+    """Minimal text input (for IP)."""
     def __init__(self, rect: pg.Rect, placeholder: str = "", numeric_only: bool = False):
         self.rect = rect
         self.text = ""
@@ -127,6 +125,7 @@ def draw_brick_border(surf: pg.Surface):
     w, h = surf.get_size()
     brick_h = 10
     brick_w = 16
+
     # Top/bottom rows
     x = 0
     ci = 0
@@ -145,6 +144,7 @@ def draw_brick_border(surf: pg.Surface):
             pg.draw.circle(surf, darker(col, 40), (cx, cy), 3, 1)
         x += brick_w
         ci += 1
+
     # Left/right columns
     y = brick_h
     ci = 0
@@ -195,7 +195,8 @@ def draw_title_bricks(surf: pg.Surface, text: str, x: int, y: int):
         ci += 1
 
 def title_bricks_width(text: str) -> int:
-    """Return the pixel width of the title rendered by draw_title_bricks."""
+    """Return the pixel width of the title rendered by draw_title_bricks.
+    Makes it easy to center title text."""
     brick_w = 12
     gap = 2
     width = 0
@@ -228,9 +229,12 @@ def get_local_ip() -> str:
 
 
 def run_menu(error_message: str | None = None):
+    """
+    Runs the main menu.
+    """
     if not pg.get_init():
         pg.init()
-    pg.display.set_caption("LEGO Brick Break — Menu")
+    pg.display.set_caption("LEGO Brick Breaker — Menu")
     screen = pg.display.set_mode((GAME_W * SCALE, GAME_H * SCALE))
     clock = pg.time.Clock()
     low = pg.Surface((GAME_W, GAME_H))
@@ -244,16 +248,16 @@ def run_menu(error_message: str | None = None):
     btn_w = 180
     btn_h = 22
     host_btn = BrickButton(
-        pg.Rect(GAME_W // 2 - btn_w // 2, 80, btn_w, btn_h), "Host game as Breaker", "green"
+        pg.Rect(GAME_W // 2 - btn_w // 2, 80, btn_w, btn_h), "Host game as Breaker", "red"
     )
     join_btn = BrickButton(
-        pg.Rect(GAME_W // 2 - btn_w // 2, 110, btn_w, btn_h), "Join game as Placer", "blue"
+        pg.Rect(GAME_W // 2 - btn_w // 2, 110, btn_w, btn_h), "Join game as Placer", "green"
     )
     how_btn = BrickButton(
-        pg.Rect(GAME_W // 2 - btn_w // 2, 140, btn_w, btn_h), "How to play", "red"
+        pg.Rect(GAME_W // 2 - btn_w // 2, 140, btn_w, btn_h), "How to play", "blue"
     )
 
-    # Join inputs (only IP; port is fixed to DEFAULT_PORT)
+    # Join inputs (only IP; user-specified alternate port not implemented)
     ip_box = InputBox(
         pg.Rect(GAME_W // 2 - 120 // 2, 140, 120, 18),
         placeholder="Host IP"
@@ -336,11 +340,12 @@ def run_menu(error_message: str | None = None):
         low.fill(COLORS["bg"])
         draw_brick_border(low)
 
-        title_text = "LEGO BRICK BREAK"
+        title_text = "LEGO BRICK BREAKER"
         title_w = title_bricks_width(title_text)
         title_x = GAME_W // 2 - title_w // 2
         draw_title_bricks(low, title_text, x=title_x, y=18)
 
+        # draw the main menu
         if stage == "menu":
             host_btn.draw(low)
             join_btn.draw(low)
@@ -349,12 +354,14 @@ def run_menu(error_message: str | None = None):
             if join_error:
                 draw_pixel_text(low, join_error, 32, 150, (255, 64, 64))
 
+        # draw the "join" screen
         elif stage == "join":
             draw_pixel_text(low, "Join as Placer", GAME_W // 2 - 52, 60, COLORS["hud"])
             draw_pixel_text(low, "Enter host IP, then press Enter.", 24, 72, COLORS["hud_dim"])
             draw_pixel_text(low, "Press ESC to return to main menu.", 24, 84, COLORS["hud_dim"])
             ip_box.draw(low)
 
+        # draw the "host" screen
         elif stage == "host":
             draw_pixel_text(low, "Host as Breaker", GAME_W // 2 - 54, 60, COLORS["hud"])
             draw_pixel_text(low, "Share this info with your opponent:", 24, 72, COLORS["hud_dim"])
@@ -363,6 +370,7 @@ def run_menu(error_message: str | None = None):
             draw_pixel_text(low, "Waiting for player 2 to connect.", 24, 124, COLORS["hud_dim"])
             draw_pixel_text(low, "Press ESC to return to main menu.", 24, 136, COLORS["hud_dim"])
 
+        # draw the "howto" screen
         elif stage == "howto":
             draw_pixel_text(low, "How to play", GAME_W // 2 - 40, 40, COLORS["hud"])
 

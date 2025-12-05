@@ -24,7 +24,7 @@ class NetNode:
         authoritative breaker (host) from the placer (client). The background
         I/O thread is started automatically."""
         self.sock = sock
-        self.is_host = is_host
+        self.is_host = is_host  # used by game logic to distinguish breaker vs placer
         self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         self._in = queue.Queue()
         self._out = queue.Queue()
