@@ -3,7 +3,7 @@
 import queue  # non-blocking reads from net.incoming
 import random
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 import pygame
 
@@ -13,25 +13,29 @@ from brickbreaker.UI.bricks import Brick, draw_brick
 from brickbreaker.UI.config import BRICK_HIT_POINTS, BRICK_PALETTE
 from brickbreaker.UI.end_screens import run_end_screen
 from brickbreaker.UI.paddle import Paddle
+from brickbreaker.world import BOARD_W, BOARD_H, ZONE_RECT
+from brickbreaker.layout import get_placer_layout, screen_to_world, world_to_screen
 
 # from brickbreaker.UI.end_screens import run_end_screen  # UI-only: show end screen on round end
 
 pygame.init()
 
-# Configure
-WID, HEI = 1120, 600
+# Layout configuration
+WINDOW_SIZE, FIELD_RECT, SIDEBAR, HUD_RECT = get_placer_layout()
+SCREEN_W, SCREEN_H = WINDOW_SIZE          # actual OS window size
+WID, HEI = BOARD_W, BOARD_H               # logical game-world size
+ZONE_H = ZONE_RECT.height                 # matches the brick zone height from world.py
+
+# General config
 FPS = 60
 BG = (18, 18, 22)
 WHITE: pygame.Color = (255, 255, 255)
 OUTLINE = (160, 160, 160)
-SIDEBAR_W = 220
-ZONE_H = 400
 
 GRID = 10
 
 # Must match breaker.py
 PADDLE_W = 10  # set to your breaker's value
-PADDLE_H = 1  # set to your breaker's value
 BALL_RADIUS = 8  # set to your breaker's value
 
 # Brick queue
@@ -47,27 +51,29 @@ COOLDOWN_MS = 1000
 screen = None
 clock = None
 
-FIELD_RECT = pygame.Rect(0, 0, WID - SIDEBAR_W, HEI)
-SIDEBAR = pygame.Rect(FIELD_RECT.right, 0, SIDEBAR_W, HEI)
+# FIELD_RECT and SIDEBAR come from layout.get_placer_layout()
 FONT_S = pygame.font.SysFont(None, 24)
 FONT_M = pygame.font.SysFont(None, 28)
 FONT_L = pygame.font.SysFont(None, 64)
 
 
-# Game state/updates
 def now_ms() -> int:
+    """Return the current pygame clock time in milliseconds."""
     return pygame.time.get_ticks()
 
 
 def snap(v: int, grid: int = GRID) -> int:
+    """Snap a coordinate to the nearest multiple of the given grid size."""
     return grid * round(v / grid)
 
 
 def zone_rect() -> pygame.Rect:
-    return pygame.Rect(FIELD_RECT.left, FIELD_RECT.top, FIELD_RECT.width, ZONE_H)
+    """Return the world-space rectangle where bricks are allowed to be placed."""
+    return ZONE_RECT.copy()
 
 
 def clamp_inside(r: Brick, bounds: pygame.Rect) -> None:
+    """Clamp a brick's rectangle so it stays fully within the given bounds."""
     r.rect().x = max(bounds.left, min(r.rect().x, bounds.right - r.rect().width))
     r.rect().y = max(bounds.top, min(r.rect().y, bounds.bottom - r.rect().height))
 
@@ -98,14 +104,11 @@ class State:
     # UI-only guard so the end screen shows once without affecting logic
     end_shown: bool = False
 
-
 S = State()
 
-
-# Helpers
 def ui_text(surf, text, font, pos):
+    """Render a single line of white UI text onto the given surface."""
     surf.blit(font.render(text, True, WHITE), pos)
-
 
 # --- Network helpers for sync ---
 def _deserialize_bricks(items: list[dict]) -> list[tuple[pygame.Rect, tuple]]:
@@ -168,8 +171,8 @@ def pump_incoming_client_for_sync(net):
             S.launched = bool(msg.get("launched", S.launched))
 
 
-# Gameplay logic
 def fill_queue(state: State):
+    """Refill the brick queue up to QUEUE_SIZE with random sizes and colors."""
     while len(state.queue) < QUEUE_SIZE:
         w = random.randint(W_MIN, W_MAX)
         h = random.randint(H_MIN, H_MAX)
@@ -188,10 +191,15 @@ def fill_queue(state: State):
 
 
 def can_place(state: State) -> bool:
+    """Return true if the placer cooldown has expired and a brick can be placed"""
     return (now_ms() - state.last_place_time) >= COOLDOWN_MS
 
 
 def place_from_queue(state: State, mouse_pos, net=None):
+    """Place the next brick from the queue at the mouse position if allowed and inside the zone.
+    Updates local state, sends a brick_add message to the host, and starts
+    the build timer on the first successful placement.
+    """
     if state.game_over or state.time_up or not state.queue or not can_place(state):
         return
 
@@ -208,6 +216,7 @@ def place_from_queue(state: State, mouse_pos, net=None):
         False,
         BRICK_HIT_POINTS[color],
     )
+
     clamp_inside(r, z)
     if not z.contains(r):
         return
@@ -219,20 +228,24 @@ def place_from_queue(state: State, mouse_pos, net=None):
 
     state.bricks.append((r, color))
 
-    # Tell the host breaker about this new brick (protocol unchanged)
+    # Tell the host about this new brick (protocol unchanged)
     if net and not getattr(net, "is_host", False):
         net.send({"type": "brick_add", "x": r.x, "y": r.y, "w": r.studs_x, "h": r.studs_y, "color": color})
 
+    # Consume the brick we just placed and refill the queue back up to QUEUE_SIZE
     state.queue.pop(0)
     fill_queue(state)
+    # Record the time of this placement so we can enforce the cooldown
     state.last_place_time = now_ms()
 
+    # If this is the first successful placement, start the initial build-phase timer
     if not state.timer_running:
         state.timer_running = True
         state.timer_start = now_ms()
 
 
 def update_timer(state: State):
+    """Update the placer build timer and mark time_up when the initial build phase ends."""
     if state.time_up or not state.timer_running:
         return
     elapsed = (now_ms() - state.timer_start) // 1000
@@ -242,44 +255,83 @@ def update_timer(state: State):
         state.timer_running = False
 
 
-# Draw functions
 def draw_field(state: State, mouse_pos):
-    # base field
+    """Draw the main brick zone overlay, placed bricks, mirrored paddle/ball, and ghost preview."""
+    
+    # Base field background (screen-space)
     pygame.draw.rect(screen, (24, 24, 28), FIELD_RECT)
 
-    # Show where blocks can be placed
-    z = zone_rect()
-    overlay = pygame.Surface((z.width, z.height), pygame.SRCALPHA)
+    # Brick zone overlay (world -> screen)
+    z_world = zone_rect()
+    z_screen_topleft = world_to_screen(z_world.topleft, FIELD_RECT)
+    z_screen = pygame.Rect(z_screen_topleft, (z_world.width, z_world.height))
+
+    overlay = pygame.Surface((z_world.width, z_world.height), pygame.SRCALPHA)
     overlay.fill((255, 255, 255, 80))
-    screen.blit(overlay, z.topleft)
-    pygame.draw.rect(screen, OUTLINE, z, 1)
+    screen.blit(overlay, z_screen.topleft)
+    pygame.draw.rect(screen, OUTLINE, z_screen, 1)
 
-    # placed bricks
-    for rect, color in state.bricks:
-        draw_brick(screen, rect)
+    # Placed bricks (world -> screen)
+    for brick, color in state.bricks:
+        r_world = brick.rect()
+        bx, by = world_to_screen(r_world.topleft, FIELD_RECT)
 
-    # Draw mirrored paddle and ball from host
-    S.paddle.draw(screen)
-    draw_ball_stud(screen, Ball(int(state.ball_pos.x), int(state.ball_pos.y)), BALL_RADIUS)
+        # Temporary brick used only for drawing, so we don't mutate world coords
+        b_screen = Brick(bx, by, brick.studs_x, brick.studs_y, color)
+        draw_brick(screen, b_screen)
 
-    # Block placement preview
+    # Mirrored paddle and ball from host (world -> screen)
+    px, py = world_to_screen((S.paddle.x, S.paddle.y), FIELD_RECT)
+    p_screen = replace(S.paddle, x=px, y=py)
+    p_screen.draw(screen)
+
+    bx, by = world_to_screen((state.ball_pos.x, state.ball_pos.y), FIELD_RECT)
+    draw_ball_stud(
+        screen,
+        Ball(int(bx), int(by)),
+        BALL_RADIUS,
+    )
+
+    # Block placement preview (ghost brick)
     if state.queue and not state.time_up and not state.game_over:
-        w, h, _ = state.queue[0]
-        ghost = Brick(snap(mouse_pos[0] - w // 2), snap(mouse_pos[1] - h // 2), w, h, "red")
-        clamp_inside(ghost, z)
-        if z.contains(ghost):
-            s = pygame.Surface((w, h), pygame.SRCALPHA)
-            s.fill((*WHITE, 100))
-            screen.blit(s, ghost.rect().topleft)
-            pygame.draw.rect(screen, WHITE, ghost, 1)
+        
+        # Only show ghost if mouse is inside the field area
+        if FIELD_RECT.collidepoint(mouse_pos):
+            wx, wy = screen_to_world(mouse_pos, FIELD_RECT)
+            w, h, _ = state.queue[0]
+
+            ghost = Brick(
+                snap(wx - w // 2),
+                snap(wy - h // 2),
+                w,
+                h,
+                "red",
+            )
+
+            # Clamp and test in world-space zone
+            z_world = zone_rect()
+            clamp_inside(ghost, z_world)
+            if z_world.contains(ghost):
+                gr_world = ghost.rect()
+                gx, gy = world_to_screen(gr_world.topleft, FIELD_RECT)
+                ghost_screen_rect = pygame.Rect(
+                    gx, gy, gr_world.width, gr_world.height
+                )
+
+                s = pygame.Surface(
+                    (ghost_screen_rect.width, ghost_screen_rect.height),
+                    pygame.SRCALPHA,
+                )
+                s.fill((*WHITE, 100))
+                screen.blit(s, ghost_screen_rect.topleft)
+                pygame.draw.rect(screen, WHITE, ghost_screen_rect, 1)
 
 
 def draw_sidebar(state: State):
+    """Draw the sidebar UI, including cooldown status and the upcoming brick queue preview."""
     pygame.draw.rect(screen, (15, 15, 18), SIDEBAR)
 
     y = 30
-    ui_text(screen, f"Time: {state.time_left:02d}s", FONT_M, (SIDEBAR.left + 16, y))
-    y += 40
 
     # cooldown status
     if not state.time_up and not state.game_over:
@@ -295,20 +347,25 @@ def draw_sidebar(state: State):
     y += 20
 
     # queue preview
-    for w, h, color in state.queue[:6]:
+    for studs_x, studs_y, color in state.queue[:6]:
         box = pygame.Rect(SIDEBAR.left + 16, y, 160, 42)
         pygame.draw.rect(screen, (26, 26, 32), box, border_radius=6)
         pygame.draw.rect(screen, OUTLINE, box, 1, border_radius=6)
 
-        scale = min((box.width - 14) / w, (box.height - 14) / h, 1.0)
-        bw, bh = max(6, int(w * scale)), max(6, int(h * scale))
-        bx = box.centerx - bw // 2
-        by = box.centery - bh // 2
-        draw_brick(screen, Brick(bx, by, w, h, color))
+        # Build a dummy brick at (0, 0) to get its real pixel size
+        dummy = Brick(0, 0, studs_x, studs_y, color)
+        r = dummy.rect()  # width = studs_x * STUD_UNIT, height = BRICK_HEIGHT
+
+        # Center the brick inside the box using its true size
+        bx = box.centerx - r.width // 2
+        by = box.centery - r.height // 2
+
+        draw_brick(screen, Brick(bx, by, studs_x, studs_y, color))
         y += 60
 
 
 def draw_game_complete(state: State):
+    """If the round is over, draw a simple 'Placer Wins' or 'Breaker Wins' message near the bottom."""
     if state.game_over:
         if state.player_won:
             text = "Placer Wins (Time)!"
@@ -317,14 +374,54 @@ def draw_game_complete(state: State):
         msg = FONT_L.render(text, True, WHITE)
         screen.blit(msg, msg.get_rect(center=(FIELD_RECT.centerx, HEI - 60)))
 
+def draw_hud(state: State):
+    """Draw the top HUD band with the timer and current placer status/instructions."""
+    pygame.draw.rect(screen, (15, 15, 18), HUD_RECT)
+    pygame.draw.line(
+        screen,
+        OUTLINE,
+        (HUD_RECT.left, HUD_RECT.bottom),
+        (HUD_RECT.right, HUD_RECT.bottom),
+        1,
+    )
 
-# Main
+    # Left: timer
+    ui_text(
+        screen,
+        f"Time: {state.time_left:02d}s",
+        FONT_M,
+        (HUD_RECT.left + 16, HUD_RECT.top + 10),
+    )
+
+    # Right / center: status / instructions
+    if state.game_over:
+        msg = "Round over – waiting for result..."
+    elif state.time_up:
+        msg = "Time is up – breaker is playing out the round"
+    elif not state.timer_running:
+        msg = "Click inside the highlighted zone to place bricks"
+    else:
+        msg = "Keep building while there is still time!"
+
+    ui_text(
+        screen,
+        msg,
+        FONT_S,
+        (HUD_RECT.left + 260, HUD_RECT.top + 12),
+    )
+
+
 def main(net=None):
+    """Entry point for the placer role.
+
+    Sets up the window, processes input, syncs state from the host breaker,
+    runs the build loop, and shows the placer end screen when the round ends.
+    """
     global screen, clock
     if not pygame.get_init():
         pygame.init()
 
-    screen = pygame.display.set_mode((WID, HEI))
+    screen = pygame.display.set_mode(WINDOW_SIZE)
     pygame.display.set_caption("Brick Builder Game")
     clock = pygame.time.Clock()
 
@@ -349,12 +446,15 @@ def main(net=None):
             if e.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
-            if (
-                e.type == pygame.MOUSEBUTTONDOWN
-                and e.button == 1
-                and zone_rect().collidepoint(mouse_pos)
-            ):
-                place_from_queue(S, mouse_pos, net)
+            if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
+                # Must be inside the board area, not the sidebar or HUD
+                if FIELD_RECT.collidepoint(mouse_pos):
+                    # Convert screen → world coordinates
+                    wx, wy = screen_to_world(mouse_pos, FIELD_RECT)
+
+                    # Only call placement if inside brick zone
+                    if ZONE_RECT.collidepoint((wx, wy)):
+                        place_from_queue(S, (wx, wy), net)
 
         pump_incoming_client_for_sync(net)
         if not (S.game_over or S.player_won):
@@ -363,6 +463,7 @@ def main(net=None):
         screen.fill(BG)
         draw_field(S, mouse_pos)
         draw_sidebar(S)
+        draw_hud(S)
         draw_game_complete(S)
         pygame.display.flip()
 

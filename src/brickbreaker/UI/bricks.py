@@ -48,6 +48,7 @@ class Brick:
 
 
 def _draw_side_stud(surf: pg.Surface, cx: int, top_y: int, base_color):
+    """Draw a single LEGO-style side-view stud with shading and rim."""
     # Stud as a semicircle sitting on the top edge with highlight + rim
     pg.draw.circle(surf, base_color, (cx, top_y), STUD_RADIUS)
     pg.draw.circle(surf, lighter(base_color, 35), (cx - 1, top_y - 1), max(1, STUD_RADIUS - 2))
@@ -57,6 +58,7 @@ def _draw_side_stud(surf: pg.Surface, cx: int, top_y: int, base_color):
 
 
 def draw_brick(surf: pg.Surface, b: Brick):
+    """Render a brick body, studs, and (if applicable) the unbreakable chain overlay."""
     base = COLORS[b.color_key]
     r = b.rect()
 

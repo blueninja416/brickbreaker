@@ -24,7 +24,7 @@ class NetNode:
         authoritative breaker (host) from the placer (client). The background
         I/O thread is started automatically."""
         self.sock = sock
-        self.is_host = is_host
+        self.is_host = is_host  # used by game logic to distinguish breaker vs placer
         self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         self._in = queue.Queue()
         self._out = queue.Queue()
@@ -94,6 +94,37 @@ class NetNode:
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.connect((host, port))
         return NetNode(s, is_host=False)
+    
+    @staticmethod
+    def host_async(port=DEFAULT_PORT, on_accept=None):
+        """Begin listening asynchronously.
+
+        Spawns a background thread that blocks on accept(). When a client
+        connects, it wraps the socket in a NetNode(is_host=True) and calls
+        on_accept(node).
+        """
+        ls = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        ls.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        ls.bind(("", port))
+        ls.listen(1)
+
+        def waiter():
+            try:
+                conn, _addr = ls.accept()  # blocking, but on background thread
+            except OSError:
+                return
+            finally:
+                try:
+                    ls.close()
+                except OSError:
+                    pass
+
+            node = NetNode(conn, is_host=True)
+            if on_accept:
+                on_accept(node)
+
+        threading.Thread(target=waiter, daemon=True).start()
+        return ls
 
     # ---- background I/O thread ----
     def _pump(self):

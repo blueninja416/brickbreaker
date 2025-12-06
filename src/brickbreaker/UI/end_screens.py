@@ -114,17 +114,11 @@ def run_crumble_reveal(
     """Cover with a LEGO wall, then let bricks fall away to reveal text underneath."""
     clock = pg.time.Clock()
 
-    # Build a wall of tiles
+     # Build a grid of tiles across the full game area (X across width, Y down height)
     tiles: list[_Tile] = []
     colors = [COLORS[k] for k in ("red", "yellow", "green", "blue")]
     rng = random.Random()
-    for gy in range(0, GAME_W, STUD_UNIT):
-        for gx in range(
-            0, GAME_H, STUD_UNIT
-        ):  # NOTE: GAME_H used for rows; we draw in low (GAME_W x GAME_H)
-            pass
-    # Corrected: X goes across width, Y goes down height
-    tiles.clear()
+
     for gy in range(0, GAME_H, STUD_UNIT):
         for gx in range(0, GAME_W, STUD_UNIT):
             t = _Tile(gx, gy, STUD_UNIT, int(STUD_UNIT * 0.9), rng.choice(colors))
@@ -204,7 +198,6 @@ def run_end_screen(role: str, won: bool) -> None:
 
     if crumble:
         run_crumble_reveal(screen, low, message)
-        return
 
     # Static LEGO title (no build animation)
     clock = pg.time.Clock()

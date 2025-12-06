@@ -19,16 +19,23 @@ class Paddle:
 
     @property
     def w(self) -> int:
+        """Pixel width of the paddle determined by stud width"""
         return self.studs_w * STUD_UNIT
 
     @property
     def h(self) -> int:
+        """Pixel height of the paddle"""
         return PADDLE_H
 
     def rect(self) -> pg.Rect:
+        """Return the paddle bounds as a pygame.Rect."""
         return pg.Rect(int(self.x), int(self.y), self.w, self.h)
 
     def update(self, dt: float, left_bound: int, right_bound: int, keys):
+        """Move the paddle horizontally based on input and clamp to the given bounds.
+        dt is the frame time in seconds. left_bound and right_bound define the
+        horizontal limits of movement in pixels. keys is the current pygame key state.
+        """
         dx = 0
         if keys[pg.K_LEFT] or keys[pg.K_a]:
             dx -= PADDLE_SPEED * dt
@@ -37,6 +44,7 @@ class Paddle:
         self.x = max(left_bound, min(self.x + dx, right_bound - self.w))
 
     def draw(self, surf: pg.Surface):
+        """Draw the paddle with a LEGO-like highlight/shadow effect."""
         r = self.rect()
         pg.draw.rect(surf, COLORS["paddle"], r, border_radius=2)
         pg.draw.line(surf, (255, 255, 255), (r.left, r.top), (r.right - 1, r.top))
