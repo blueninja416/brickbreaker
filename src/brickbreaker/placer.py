@@ -328,12 +328,16 @@ def draw_field(state: State, mouse_pos):
 
 
 def draw_sidebar(state: State):
-    """Draw the sidebar UI, including cooldown status and the upcoming brick queue preview."""
+    """Draw the sidebar UI, including timer, cooldown status, and the upcoming brick queue preview."""
     pygame.draw.rect(screen, (15, 15, 18), SIDEBAR)
 
-    y = 30
+    y = 20
 
-    # cooldown status
+    # Timer at the top of the sidebar
+    ui_text(screen, f"Time: {state.time_left:02d}s", FONT_M, (SIDEBAR.left + 16, y))
+    y += 30
+
+    # Cooldown status
     if not state.time_up and not state.game_over:
         if can_place(state):
             ui_text(screen, "Ready to place", FONT_S, (SIDEBAR.left + 16, y))
@@ -385,15 +389,7 @@ def draw_hud(state: State):
         1,
     )
 
-    # Left: timer
-    ui_text(
-        screen,
-        f"Time: {state.time_left:02d}s",
-        FONT_M,
-        (HUD_RECT.left + 16, HUD_RECT.top + 10),
-    )
-
-    # Right / center: status / instructions
+    # Status / instructions (now on the left)
     if state.game_over:
         msg = "Round over – waiting for result..."
     elif state.time_up:
@@ -403,12 +399,12 @@ def draw_hud(state: State):
     else:
         msg = "Keep building while there is still time!"
 
-    ui_text(
-        screen,
-        msg,
-        FONT_S,
-        (HUD_RECT.left + 260, HUD_RECT.top + 12),
+    # Center the status/instruction text horizontally in the HUD
+    text_surface = FONT_S.render(msg, True, WHITE)
+    text_rect = text_surface.get_rect(
+        center=(HUD_RECT.left + HUD_RECT.width // 2, HUD_RECT.top + HUD_RECT.height // 2)
     )
+    screen.blit(text_surface, text_rect)
 
 
 def main(net=None):

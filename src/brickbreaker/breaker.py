@@ -304,6 +304,10 @@ def draw_hud():
             status_txt,
             (HUD_RECT.left + 16, HUD_RECT.top + 8 + FONT_S.get_height() + 4),
         )
+    
+    # Right: timer
+    timer = FONT_M.render(f"Time: {S.time_left:02d}s", True, WHITE)
+    screen.blit(timer, (HUD_RECT.right - timer.get_width() - 16, HUD_RECT.top + 6))
 
     # Launch delay info under the timer
     if not S.launched and not (S.game_over or S.player_won):
